@@ -1,0 +1,4562 @@
+------------------------------------------------------------------------------------------------
+      name:  <unnamed>
+       log:  C:\Users\cf8745\Box\Research\Rating Agency Paper - Final\ReplicationPackage/Code/Ma
+> ster_clean.log
+  log type:  text
+ opened on:   5 May 2026, 04:51:26
+
+. 
+. * Source subdirectory globals (raw inputs)
+. global compustat    "$raw/Compustat"
+
+. global crsp         "$raw/CRSP"
+
+. global eikon        "$raw/Eikon"
+
+. global icebaml      "$raw/ICE-BAML"
+
+. global manual       "$raw/Manual"
+
+. global cds          "$raw/CDS"
+
+. 
+. 
+. ********************************************************************************
+. * SECTION 1: LOAD COMPUSTAT AND DEFINE SAMPLE
+. *
+. * Source: Compustat Fundamentals Quarterly (US, non-financial, 2006--2015).
+. * CompustatQ_v2.dta is a pre-filtered version keeping only the variables
+. * needed for this project. The filtering code (CompustatQ_v1 -> v2) is
+. * commented out in the original file; CompustatQ_v2.dta is the starting point.
+. ********************************************************************************
+. 
+. use "$compustat/CompustatQ_v2.dta", clear
+
+. 
+. drop if missing(gvkey)
+(0 observations deleted)
+
+. destring gvkey, g(gvkey_d)
+gvkey: all characters numeric; gvkey_d generated as long
+
+. 
+. * US firms only
+. drop if fic != "USA"
+(126,393 observations deleted)
+
+. 
+. destring sic, replace
+sic: all characters numeric; replaced as int
+
+. 
+. * One duplicate per quarter-gvkey: keep later date
+. gsort datacqtr gvkey -datadate
+
+. duplicates drop datacqtr gvkey, force
+
+Duplicates in terms of datacqtr gvkey
+
+(1 observation deleted)
+
+. 
+. * Parse quarter string into numeric year and quarter
+. gen datacyr = substr(datacqtr, 1, 4)
+
+. destring datacyr, replace
+datacyr: all characters numeric; replaced as int
+
+. gen datacq = substr(datacqtr, 6, 1)
+
+. destring datacq, replace
+datacq: all characters numeric; replaced as byte
+
+. 
+. gen yearquarter = yq(datacyr, datacq)
+
+. format yearquarter %tq
+
+. 
+. gen year  = year(datadate)
+
+. gen month = month(datadate)
+
+. 
+. * Numeric panel identifiers
+. egen timecode    = group(datacqtr)
+
+. egen companycode = group(gvkey)
+
+. tsset companycode timecode
+       panel variable:  companycode (unbalanced)
+        time variable:  timecode, 1 to 43, but with gaps
+                delta:  1 unit
+
+. 
+. * Fama-French 49-industry and 10-industry classifications
+. /****************************************
+> * ffind.ado
+> * Creates variable containing Fama-French
+> * industry classification.
+> *
+> * Author:  Judson Caskey, UCLA
+> *          December 9, 2007
+> *
+> ****************************************/
+. 
+. capture program drop ffind
+
+. 
+. program define ffind
+  1.         version 9.2
+  2.         syntax varlist(min=1 max=1 numeric) [if] [in], newvar(string) type(numlist max=1 mi
+> n=1)
+  3. 
+.         tempvar ftyp
+  4.         tokenize "`type'"
+  5.         local `ftyp'=`1'
+  6.         
+.         * Check if newvar is valid variable name
+.         capture confirm new variable `newvar'
+  7.         if _rc != 0 {
+  8.                 di as error "Variable `newvar' is invalid"
+  9.                 exit 111
+ 10.                 }
+ 11. 
+.         * Check type
+.         if ~inlist(``ftyp'',5,10,12,17,30,38,48,49) {
+ 12.                 di as error "Type must be 5, 10, 12, 17, 30, 38, 48 or 49"
+ 13.                 exit 111
+ 14.                 }
+ 15. 
+.         * Set industries
+. 
+.         tempvar ffind
+ 16.         tokenize "`varlist'"
+ 17.         local `ffind' "`1'"
+ 18. 
+. 
+.         qui gen `newvar'=.
+ 19.         label variable `newvar' "Fama-French industry code (``ftyp'' industries)"
+ 20. 
+.         capture label drop `newvar'
+ 21.         if ``ftyp''==5 {
+ 22.                 label define `newvar' 1 "Consumer Durables, NonDurables, Wholesale, Retail,
+>  and Some Services (Laundries, Repair Shops)" 2 "Manufacturing, Energy, and Utilities" 3 "Busi
+> ness Equipment, Telephone and Television Transmission" 4 "Healthcare, Medical Equipment, and D
+> rugs" 5 "Other -- Mines, Constr, BldMt, Trans, Hotels, Bus Serv, Entertainment, Finance"
+ 23.                 label values `newvar' `newvar'
+ 24. 
+.                 qui replace `newvar'=1 if inrange(``ffind'',100,999) | inrange(``ffind'',2000,
+> 2399) | inrange(``ffind'',2700,2749) | inrange(``ffind'',2770,2799) | inrange(``ffind'',3100,3
+> 199) | inrange(``ffind'',3940,3989) | inrange(``ffind'',2500,2519) | inrange(``ffind'',2590,25
+> 99) | inrange(``ffind'',3630,3659) | inrange(``ffind'',3710,3711) | inrange(``ffind'',3714,371
+> 4) | inrange(``ffind'',3716,3716) | inrange(``ffind'',3750,3751) | inrange(``ffind'',3792,3792
+> ) | inrange(``ffind'',3900,3939) | inrange(``ffind'',3990,3999) | inrange(``ffind'',5000,5999)
+>  | inrange(``ffind'',7200,7299) | inrange(``ffind'',7600,7699)
+ 25.                 qui replace `newvar'=2 if inrange(``ffind'',2520,2589) | inrange(``ffind'',
+> 2600,2699) | inrange(``ffind'',2750,2769) | inrange(``ffind'',2800,2829) | inrange(``ffind'',2
+> 840,2899) | inrange(``ffind'',3000,3099) | inrange(``ffind'',3200,3569) | inrange(``ffind'',35
+> 80,3629) | inrange(``ffind'',3700,3709) | inrange(``ffind'',3712,3713) | inrange(``ffind'',371
+> 5,3715) | inrange(``ffind'',3717,3749) | inrange(``ffind'',3752,3791) | inrange(``ffind'',3793
+> ,3799) | inrange(``ffind'',3830,3839) | inrange(``ffind'',3860,3899) | inrange(``ffind'',1200,
+> 1399) | inrange(``ffind'',2900,2999) | inrange(``ffind'',4900,4949)
+ 26.                 qui replace `newvar'=3 if inrange(``ffind'',3570,3579) | inrange(``ffind'',
+> 3622,3622) | inrange(``ffind'',3660,3692) | inrange(``ffind'',3694,3699) | inrange(``ffind'',3
+> 810,3839) | inrange(``ffind'',7370,7372) | inrange(``ffind'',7373,7373) | inrange(``ffind'',73
+> 74,7374) | inrange(``ffind'',7375,7375) | inrange(``ffind'',7376,7376) | inrange(``ffind'',737
+> 7,7377) | inrange(``ffind'',7378,7378) | inrange(``ffind'',7379,7379) | inrange(``ffind'',7391
+> ,7391) | inrange(``ffind'',8730,8734) | inrange(``ffind'',4800,4899)
+ 27.                 qui replace `newvar'=4 if inrange(``ffind'',2830,2839) | inrange(``ffind'',
+> 3693,3693) | inrange(``ffind'',3840,3859) | inrange(``ffind'',8000,8099)
+ 28.                 qui replace `newvar'=5 if missing(`newvar') & ~missing(``ffind'')
+ 29.                 }
+ 30.         else if ``ftyp''==10 {
+ 31.                 label define `newvar' 1 "Consumer NonDurables -- Food, Tobacco, Textiles, A
+> pparel, Leather, Toys" 2 "Consumer Durables -- Cars, TV's, Furniture, Household Appliances" 3 
+> "Manufacturing -- Machinery, Trucks, Planes, Chemicals, Off Furn, Paper, Com Printing" 4 "Oil,
+>  Gas, and Coal Extraction and Products" 5 "Business Equipment -- Computers, Software, and Elec
+> tronic Equipment" 6 "Telephone and Television Transmission" 7 "Wholesale, Retail, and Some Ser
+> vices (Laundries, Repair Shops)" 8 "Healthcare, Medical Equipment, and Drugs" 9 "Utilities" 10
+>  "Other -- Mines, Constr, BldMt, Trans, Hotels, Bus Serv, Entertainment, Finance"
+ 32.                 label values `newvar' `newvar'
+ 33. 
+.                 qui replace `newvar'=1 if inrange(``ffind'',100,999) | inrange(``ffind'',2000,
+> 2399) | inrange(``ffind'',2700,2749) | inrange(``ffind'',2770,2799) | inrange(``ffind'',3100,3
+> 199) | inrange(``ffind'',3940,3989)
+ 34.                 qui replace `newvar'=2 if inrange(``ffind'',2500,2519) | inrange(``ffind'',
+> 2590,2599) | inrange(``ffind'',3630,3659) | inrange(``ffind'',3710,3711) | inrange(``ffind'',3
+> 714,3714) | inrange(``ffind'',3716,3716) | inrange(``ffind'',3750,3751) | inrange(``ffind'',37
+> 92,3792) | inrange(``ffind'',3900,3939) | inrange(``ffind'',3990,3999)
+ 35.                 qui replace `newvar'=3 if inrange(``ffind'',2520,2589) | inrange(``ffind'',
+> 2600,2699) | inrange(``ffind'',2750,2769) | inrange(``ffind'',2800,2829) | inrange(``ffind'',2
+> 840,2899) | inrange(``ffind'',3000,3099) | inrange(``ffind'',3200,3569) | inrange(``ffind'',35
+> 80,3629) | inrange(``ffind'',3700,3709) | inrange(``ffind'',3712,3713) | inrange(``ffind'',371
+> 5,3715) | inrange(``ffind'',3717,3749) | inrange(``ffind'',3752,3791) | inrange(``ffind'',3793
+> ,3799) | inrange(``ffind'',3830,3839) | inrange(``ffind'',3860,3899)
+ 36.                 qui replace `newvar'=4 if inrange(``ffind'',1200,1399) | inrange(``ffind'',
+> 2900,2999)
+ 37.                 qui replace `newvar'=5 if inrange(``ffind'',3570,3579) | inrange(``ffind'',
+> 3622,3622) | inrange(``ffind'',3660,3692) | inrange(``ffind'',3694,3699) | inrange(``ffind'',3
+> 810,3839) | inrange(``ffind'',7370,7372) | inrange(``ffind'',7373,7373) | inrange(``ffind'',73
+> 74,7374) | inrange(``ffind'',7375,7375) | inrange(``ffind'',7376,7376) | inrange(``ffind'',737
+> 7,7377) | inrange(``ffind'',7378,7378) | inrange(``ffind'',7379,7379) | inrange(``ffind'',7391
+> ,7391) | inrange(``ffind'',8730,8734)
+ 38.                 qui replace `newvar'=6 if inrange(``ffind'',4800,4899)
+ 39.                 qui replace `newvar'=7 if inrange(``ffind'',5000,5999) | inrange(``ffind'',
+> 7200,7299) | inrange(``ffind'',7600,7699)
+ 40.                 qui replace `newvar'=8 if inrange(``ffind'',2830,2839) | inrange(``ffind'',
+> 3693,3693) | inrange(``ffind'',3840,3859) | inrange(``ffind'',8000,8099)
+ 41.                 qui replace `newvar'=9 if inrange(``ffind'',4900,4949)
+ 42.                 qui replace `newvar'=10 if missing(`newvar') & ~missing(``ffind'')
+ 43.                 }
+ 44.         else if ``ftyp''==12 {
+ 45.                 label define `newvar' 1 "Consumer NonDurables -- Food, Tobacco, Textiles, A
+> pparel, Leather, Toys" 2 "Consumer Durables -- Cars, TV's, Furniture, Household Appliances" 3 
+> "Manufacturing -- Machinery, Trucks, Planes, Off Furn, Paper, Com Printing" 4 "Oil, Gas, and C
+> oal Extraction and Products" 5 "Chemicals and Allied Products" 6 "Business Equipment -- Comput
+> ers, Software, and Electronic Equipment" 7 "Telephone and Television Transmission" 8 "Utilitie
+> s" 9 "Wholesale, Retail, and Some Services (Laundries, Repair Shops)" 10 "Healthcare, Medical 
+> Equipment, and Drugs" 11 "Finance" 12 "Other -- Mines, Constr, BldMt, Trans, Hotels, Bus Serv,
+>  Entertainment"
+ 46.                 label values `newvar' `newvar'
+ 47. 
+.                 qui replace `newvar'=1 if inrange(``ffind'',100,999) | inrange(``ffind'',2000,
+> 2399) | inrange(``ffind'',2700,2749) | inrange(``ffind'',2770,2799) | inrange(``ffind'',3100,3
+> 199) | inrange(``ffind'',3940,3989)
+ 48.                 qui replace `newvar'=2 if inrange(``ffind'',2500,2519) | inrange(``ffind'',
+> 2590,2599) | inrange(``ffind'',3630,3659) | inrange(``ffind'',3710,3711) | inrange(``ffind'',3
+> 714,3714) | inrange(``ffind'',3716,3716) | inrange(``ffind'',3750,3751) | inrange(``ffind'',37
+> 92,3792) | inrange(``ffind'',3900,3939) | inrange(``ffind'',3990,3999)
+ 49.                 qui replace `newvar'=3 if inrange(``ffind'',2520,2589) | inrange(``ffind'',
+> 2600,2699) | inrange(``ffind'',2750,2769) | inrange(``ffind'',3000,3099) | inrange(``ffind'',3
+> 200,3569) | inrange(``ffind'',3580,3629) | inrange(``ffind'',3700,3709) | inrange(``ffind'',37
+> 12,3713) | inrange(``ffind'',3715,3715) | inrange(``ffind'',3717,3749) | inrange(``ffind'',375
+> 2,3791) | inrange(``ffind'',3793,3799) | inrange(``ffind'',3830,3839) | inrange(``ffind'',3860
+> ,3899)
+ 50.                 qui replace `newvar'=4 if inrange(``ffind'',1200,1399) | inrange(``ffind'',
+> 2900,2999)
+ 51.                 qui replace `newvar'=5 if inrange(``ffind'',2800,2829) | inrange(``ffind'',
+> 2840,2899)
+ 52.                 qui replace `newvar'=6 if inrange(``ffind'',3570,3579) | inrange(``ffind'',
+> 3660,3692) | inrange(``ffind'',3694,3699) | inrange(``ffind'',3810,3829) | inrange(``ffind'',7
+> 370,7379)
+ 53.                 qui replace `newvar'=7 if inrange(``ffind'',4800,4899)
+ 54.                 qui replace `newvar'=8 if inrange(``ffind'',4900,4949)
+ 55.                 qui replace `newvar'=9 if inrange(``ffind'',5000,5999) | inrange(``ffind'',
+> 7200,7299) | inrange(``ffind'',7600,7699)
+ 56.                 qui replace `newvar'=10 if inrange(``ffind'',2830,2839) | inrange(``ffind''
+> ,3693,3693) | inrange(``ffind'',3840,3859) | inrange(``ffind'',8000,8099)
+ 57.                 qui replace `newvar'=11 if inrange(``ffind'',6000,6999)
+ 58.                 qui replace `newvar'=12 if missing(`newvar') & ~missing(``ffind'')
+ 59.                 }
+ 60. 
+.         else if ``ftyp''==17 {
+ 61.                 label define `newvar' 1 "Food" 2 "Mining and Minerals" 3 "Oil and Petroleum
+>  Products" 4 "Textiles, Apparel & Footware" 5 "Consumer Durables" 6 "Chemicals" 7 "Drugs, Soap
+> , Prfums, Tobacco" 8 "Construction and Construction Materials" 9 "Steel Works Etc" 10 "Fabrica
+> ted Products" 11 "Machinery and Business Equipment" 12 "Automobiles" 13 "Transportation" 14 "U
+> tilities" 15 "Retail Stores" 16 "Banks, Insurance Companies, and Other Financials" 17 "Other"
+ 62.                 label values `newvar' `newvar'
+ 63. 
+.                 qui replace `newvar'=1 if inrange(``ffind'',100,199) | inrange(``ffind'',200,2
+> 99) | inrange(``ffind'',700,799) | inrange(``ffind'',900,999) | inrange(``ffind'',2000,2009) |
+>  inrange(``ffind'',2010,2019) | inrange(``ffind'',2020,2029) | inrange(``ffind'',2030,2039) | 
+> inrange(``ffind'',2040,2046) | inrange(``ffind'',2047,2047) | inrange(``ffind'',2048,2048) | i
+> nrange(``ffind'',2050,2059) | inrange(``ffind'',2060,2063) | inrange(``ffind'',2064,2068) | in
+> range(``ffind'',2070,2079) | inrange(``ffind'',2080,2080) | inrange(``ffind'',2082,2082) | inr
+> ange(``ffind'',2083,2083) | inrange(``ffind'',2084,2084) | inrange(``ffind'',2085,2085) | inra
+> nge(``ffind'',2086,2086) | inrange(``ffind'',2087,2087) | inrange(``ffind'',2090,2092) | inran
+> ge(``ffind'',2095,2095) | inrange(``ffind'',2096,2096) | inrange(``ffind'',2097,2097) | inrang
+> e(``ffind'',2098,2099) | inrange(``ffind'',5140,5149) | inrange(``ffind'',5150,5159) | inrange
+> (``ffind'',5180,5182) | inrange(``ffind'',5191,5191)
+ 64.                 qui replace `newvar'=2 if inrange(``ffind'',1000,1009) | inrange(``ffind'',
+> 1010,1019) | inrange(``ffind'',1020,1029) | inrange(``ffind'',1030,1039) | inrange(``ffind'',1
+> 040,1049) | inrange(``ffind'',1060,1069) | inrange(``ffind'',1080,1089) | inrange(``ffind'',10
+> 90,1099) | inrange(``ffind'',1200,1299) | inrange(``ffind'',1400,1499) | inrange(``ffind'',505
+> 0,5052)
+ 65.                 qui replace `newvar'=3 if inrange(``ffind'',1300,1300) | inrange(``ffind'',
+> 1310,1319) | inrange(``ffind'',1320,1329) | inrange(``ffind'',1380,1380) | inrange(``ffind'',1
+> 381,1381) | inrange(``ffind'',1382,1382) | inrange(``ffind'',1389,1389) | inrange(``ffind'',29
+> 00,2912) | inrange(``ffind'',5170,5172)
+ 66.                 qui replace `newvar'=4 if inrange(``ffind'',2200,2269) | inrange(``ffind'',
+> 2270,2279) | inrange(``ffind'',2280,2284) | inrange(``ffind'',2290,2295) | inrange(``ffind'',2
+> 296,2296) | inrange(``ffind'',2297,2297) | inrange(``ffind'',2298,2298) | inrange(``ffind'',22
+> 99,2299) | inrange(``ffind'',2300,2390) | inrange(``ffind'',2391,2392) | inrange(``ffind'',239
+> 3,2395) | inrange(``ffind'',2396,2396) | inrange(``ffind'',2397,2399) | inrange(``ffind'',3020
+> ,3021) | inrange(``ffind'',3100,3111) | inrange(``ffind'',3130,3131) | inrange(``ffind'',3140,
+> 3149) | inrange(``ffind'',3150,3151) | inrange(``ffind'',3963,3965) | inrange(``ffind'',5130,5
+> 139)
+ 67.                 qui replace `newvar'=5 if inrange(``ffind'',2510,2519) | inrange(``ffind'',
+> 2590,2599) | inrange(``ffind'',3060,3069) | inrange(``ffind'',3070,3079) | inrange(``ffind'',3
+> 080,3089) | inrange(``ffind'',3090,3099) | inrange(``ffind'',3630,3639) | inrange(``ffind'',36
+> 50,3651) | inrange(``ffind'',3652,3652) | inrange(``ffind'',3860,3861) | inrange(``ffind'',387
+> 0,3873) | inrange(``ffind'',3910,3911) | inrange(``ffind'',3914,3914) | inrange(``ffind'',3915
+> ,3915) | inrange(``ffind'',3930,3931) | inrange(``ffind'',3940,3949) | inrange(``ffind'',3960,
+> 3962) | inrange(``ffind'',5020,5023) | inrange(``ffind'',5064,5064) | inrange(``ffind'',5094,5
+> 094) | inrange(``ffind'',5099,5099)
+ 68.                 qui replace `newvar'=6 if inrange(``ffind'',2800,2809) | inrange(``ffind'',
+> 2810,2819) | inrange(``ffind'',2820,2829) | inrange(``ffind'',2860,2869) | inrange(``ffind'',2
+> 870,2879) | inrange(``ffind'',2890,2899) | inrange(``ffind'',5160,5169)
+ 69.                 qui replace `newvar'=7 if inrange(``ffind'',2100,2199) | inrange(``ffind'',
+> 2830,2830) | inrange(``ffind'',2831,2831) | inrange(``ffind'',2833,2833) | inrange(``ffind'',2
+> 834,2834) | inrange(``ffind'',2840,2843) | inrange(``ffind'',2844,2844) | inrange(``ffind'',51
+> 20,5122) | inrange(``ffind'',5194,5194)
+ 70.                 qui replace `newvar'=8 if inrange(``ffind'',800,899) | inrange(``ffind'',15
+> 00,1511) | inrange(``ffind'',1520,1529) | inrange(``ffind'',1530,1539) | inrange(``ffind'',154
+> 0,1549) | inrange(``ffind'',1600,1699) | inrange(``ffind'',1700,1799) | inrange(``ffind'',2400
+> ,2439) | inrange(``ffind'',2440,2449) | inrange(``ffind'',2450,2459) | inrange(``ffind'',2490,
+> 2499) | inrange(``ffind'',2850,2859) | inrange(``ffind'',2950,2952) | inrange(``ffind'',3200,3
+> 200) | inrange(``ffind'',3210,3211) | inrange(``ffind'',3240,3241) | inrange(``ffind'',3250,32
+> 59) | inrange(``ffind'',3261,3261) | inrange(``ffind'',3264,3264) | inrange(``ffind'',3270,327
+> 5) | inrange(``ffind'',3280,3281) | inrange(``ffind'',3290,3293) | inrange(``ffind'',3420,3429
+> ) | inrange(``ffind'',3430,3433) | inrange(``ffind'',3440,3441) | inrange(``ffind'',3442,3442)
+>  | inrange(``ffind'',3446,3446) | inrange(``ffind'',3448,3448) | inrange(``ffind'',3449,3449) 
+> | inrange(``ffind'',3450,3451) | inrange(``ffind'',3452,3452) | inrange(``ffind'',5030,5039) |
+>  inrange(``ffind'',5070,5078) | inrange(``ffind'',5198,5198) | inrange(``ffind'',5210,5211) | 
+> inrange(``ffind'',5230,5231) | inrange(``ffind'',5250,5251)
+ 71.                 qui replace `newvar'=9 if inrange(``ffind'',3300,3300) | inrange(``ffind'',
+> 3310,3317) | inrange(``ffind'',3320,3325) | inrange(``ffind'',3330,3339) | inrange(``ffind'',3
+> 340,3341) | inrange(``ffind'',3350,3357) | inrange(``ffind'',3360,3369) | inrange(``ffind'',33
+> 90,3399)
+ 72.                 qui replace `newvar'=10 if inrange(``ffind'',3410,3412) | inrange(``ffind''
+> ,3443,3443) | inrange(``ffind'',3444,3444) | inrange(``ffind'',3460,3469) | inrange(``ffind'',
+> 3470,3479) | inrange(``ffind'',3480,3489) | inrange(``ffind'',3490,3499)
+ 73.                 qui replace `newvar'=11 if inrange(``ffind'',3510,3519) | inrange(``ffind''
+> ,3520,3529) | inrange(``ffind'',3530,3530) | inrange(``ffind'',3531,3531) | inrange(``ffind'',
+> 3532,3532) | inrange(``ffind'',3533,3533) | inrange(``ffind'',3534,3534) | inrange(``ffind'',3
+> 535,3535) | inrange(``ffind'',3536,3536) | inrange(``ffind'',3540,3549) | inrange(``ffind'',35
+> 50,3559) | inrange(``ffind'',3560,3569) | inrange(``ffind'',3570,3579) | inrange(``ffind'',358
+> 0,3580) | inrange(``ffind'',3581,3581) | inrange(``ffind'',3582,3582) | inrange(``ffind'',3585
+> ,3585) | inrange(``ffind'',3586,3586) | inrange(``ffind'',3589,3589) | inrange(``ffind'',3590,
+> 3599) | inrange(``ffind'',3600,3600) | inrange(``ffind'',3610,3613) | inrange(``ffind'',3620,3
+> 621) | inrange(``ffind'',3622,3622) | inrange(``ffind'',3623,3629) | inrange(``ffind'',3670,36
+> 79) | inrange(``ffind'',3680,3680) | inrange(``ffind'',3681,3681) | inrange(``ffind'',3682,368
+> 2) | inrange(``ffind'',3683,3683) | inrange(``ffind'',3684,3684) | inrange(``ffind'',3685,3685
+> ) | inrange(``ffind'',3686,3686) | inrange(``ffind'',3687,3687) | inrange(``ffind'',3688,3688)
+>  | inrange(``ffind'',3689,3689) | inrange(``ffind'',3690,3690) | inrange(``ffind'',3691,3692) 
+> | inrange(``ffind'',3693,3693) | inrange(``ffind'',3694,3694) | inrange(``ffind'',3695,3695) |
+>  inrange(``ffind'',3699,3699) | inrange(``ffind'',3810,3810) | inrange(``ffind'',3811,3811) | 
+> inrange(``ffind'',3812,3812) | inrange(``ffind'',3820,3820) | inrange(``ffind'',3821,3821) | i
+> nrange(``ffind'',3822,3822) | inrange(``ffind'',3823,3823) | inrange(``ffind'',3824,3824) | in
+> range(``ffind'',3825,3825) | inrange(``ffind'',3826,3826) | inrange(``ffind'',3827,3827) | inr
+> ange(``ffind'',3829,3829) | inrange(``ffind'',3830,3839) | inrange(``ffind'',3950,3955) | inra
+> nge(``ffind'',5060,5060) | inrange(``ffind'',5063,5063) | inrange(``ffind'',5065,5065) | inran
+> ge(``ffind'',5080,5080) | inrange(``ffind'',5081,5081)
+ 74.                 qui replace `newvar'=12 if inrange(``ffind'',3710,3710) | inrange(``ffind''
+> ,3711,3711) | inrange(``ffind'',3714,3714) | inrange(``ffind'',3716,3716) | inrange(``ffind'',
+> 3750,3751) | inrange(``ffind'',3792,3792) | inrange(``ffind'',5010,5015) | inrange(``ffind'',5
+> 510,5521) | inrange(``ffind'',5530,5531) | inrange(``ffind'',5560,5561) | inrange(``ffind'',55
+> 70,5571) | inrange(``ffind'',5590,5599)
+ 75.                 qui replace `newvar'=13 if inrange(``ffind'',3713,3713) | inrange(``ffind''
+> ,3715,3715) | inrange(``ffind'',3720,3720) | inrange(``ffind'',3721,3721) | inrange(``ffind'',
+> 3724,3724) | inrange(``ffind'',3725,3725) | inrange(``ffind'',3728,3728) | inrange(``ffind'',3
+> 730,3731) | inrange(``ffind'',3732,3732) | inrange(``ffind'',3740,3743) | inrange(``ffind'',37
+> 60,3769) | inrange(``ffind'',3790,3790) | inrange(``ffind'',3795,3795) | inrange(``ffind'',379
+> 9,3799) | inrange(``ffind'',4000,4013) | inrange(``ffind'',4100,4100) | inrange(``ffind'',4110
+> ,4119) | inrange(``ffind'',4120,4121) | inrange(``ffind'',4130,4131) | inrange(``ffind'',4140,
+> 4142) | inrange(``ffind'',4150,4151) | inrange(``ffind'',4170,4173) | inrange(``ffind'',4190,4
+> 199) | inrange(``ffind'',4200,4200) | inrange(``ffind'',4210,4219) | inrange(``ffind'',4220,42
+> 29) | inrange(``ffind'',4230,4231) | inrange(``ffind'',4400,4499) | inrange(``ffind'',4500,459
+> 9) | inrange(``ffind'',4600,4699) | inrange(``ffind'',4700,4700) | inrange(``ffind'',4710,4712
+> ) | inrange(``ffind'',4720,4729) | inrange(``ffind'',4730,4739) | inrange(``ffind'',4740,4742)
+>  | inrange(``ffind'',4780,4780) | inrange(``ffind'',4783,4783) | inrange(``ffind'',4785,4785) 
+> | inrange(``ffind'',4789,4789)
+ 76.                 qui replace `newvar'=14 if inrange(``ffind'',4900,4900) | inrange(``ffind''
+> ,4910,4911) | inrange(``ffind'',4920,4922) | inrange(``ffind'',4923,4923) | inrange(``ffind'',
+> 4924,4925) | inrange(``ffind'',4930,4931) | inrange(``ffind'',4932,4932) | inrange(``ffind'',4
+> 939,4939) | inrange(``ffind'',4940,4942)
+ 77.                 qui replace `newvar'=15 if inrange(``ffind'',5260,5261) | inrange(``ffind''
+> ,5270,5271) | inrange(``ffind'',5300,5300) | inrange(``ffind'',5310,5311) | inrange(``ffind'',
+> 5320,5320) | inrange(``ffind'',5330,5331) | inrange(``ffind'',5334,5334) | inrange(``ffind'',5
+> 390,5399) | inrange(``ffind'',5400,5400) | inrange(``ffind'',5410,5411) | inrange(``ffind'',54
+> 12,5412) | inrange(``ffind'',5420,5421) | inrange(``ffind'',5430,5431) | inrange(``ffind'',544
+> 0,5441) | inrange(``ffind'',5450,5451) | inrange(``ffind'',5460,5461) | inrange(``ffind'',5490
+> ,5499) | inrange(``ffind'',5540,5541) | inrange(``ffind'',5550,5551) | inrange(``ffind'',5600,
+> 5699) | inrange(``ffind'',5700,5700) | inrange(``ffind'',5710,5719) | inrange(``ffind'',5720,5
+> 722) | inrange(``ffind'',5730,5733) | inrange(``ffind'',5734,5734) | inrange(``ffind'',5735,57
+> 35) | inrange(``ffind'',5736,5736) | inrange(``ffind'',5750,5750) | inrange(``ffind'',5800,581
+> 3) | inrange(``ffind'',5890,5890) | inrange(``ffind'',5900,5900) | inrange(``ffind'',5910,5912
+> ) | inrange(``ffind'',5920,5921) | inrange(``ffind'',5930,5932) | inrange(``ffind'',5940,5940)
+>  | inrange(``ffind'',5941,5941) | inrange(``ffind'',5942,5942) | inrange(``ffind'',5943,5943) 
+> | inrange(``ffind'',5944,5944) | inrange(``ffind'',5945,5945) | inrange(``ffind'',5946,5946) |
+>  inrange(``ffind'',5947,5947) | inrange(``ffind'',5948,5948) | inrange(``ffind'',5949,5949) | 
+> inrange(``ffind'',5960,5963) | inrange(``ffind'',5980,5989) | inrange(``ffind'',5990,5990) | i
+> nrange(``ffind'',5992,5992) | inrange(``ffind'',5993,5993) | inrange(``ffind'',5994,5994) | in
+> range(``ffind'',5995,5995) | inrange(``ffind'',5999,5999)
+ 78.                 qui replace `newvar'=16 if inrange(``ffind'',6010,6019) | inrange(``ffind''
+> ,6020,6020) | inrange(``ffind'',6021,6021) | inrange(``ffind'',6022,6022) | inrange(``ffind'',
+> 6023,6023) | inrange(``ffind'',6025,6025) | inrange(``ffind'',6026,6026) | inrange(``ffind'',6
+> 028,6029) | inrange(``ffind'',6030,6036) | inrange(``ffind'',6040,6049) | inrange(``ffind'',60
+> 50,6059) | inrange(``ffind'',6060,6062) | inrange(``ffind'',6080,6082) | inrange(``ffind'',609
+> 0,6099) | inrange(``ffind'',6100,6100) | inrange(``ffind'',6110,6111) | inrange(``ffind'',6112
+> ,6112) | inrange(``ffind'',6120,6129) | inrange(``ffind'',6140,6149) | inrange(``ffind'',6150,
+> 6159) | inrange(``ffind'',6160,6163) | inrange(``ffind'',6172,6172) | inrange(``ffind'',6199,6
+> 199) | inrange(``ffind'',6200,6299) | inrange(``ffind'',6300,6300) | inrange(``ffind'',6310,63
+> 12) | inrange(``ffind'',6320,6324) | inrange(``ffind'',6330,6331) | inrange(``ffind'',6350,635
+> 1) | inrange(``ffind'',6360,6361) | inrange(``ffind'',6370,6371) | inrange(``ffind'',6390,6399
+> ) | inrange(``ffind'',6400,6411) | inrange(``ffind'',6500,6500) | inrange(``ffind'',6510,6510)
+>  | inrange(``ffind'',6512,6512) | inrange(``ffind'',6513,6513) | inrange(``ffind'',6514,6514) 
+> | inrange(``ffind'',6515,6515) | inrange(``ffind'',6517,6519) | inrange(``ffind'',6530,6531) |
+>  inrange(``ffind'',6532,6532) | inrange(``ffind'',6540,6541) | inrange(``ffind'',6550,6553) | 
+> inrange(``ffind'',6611,6611) | inrange(``ffind'',6700,6700) | inrange(``ffind'',6710,6719) | i
+> nrange(``ffind'',6720,6722) | inrange(``ffind'',6723,6723) | inrange(``ffind'',6724,6724) | in
+> range(``ffind'',6725,6725) | inrange(``ffind'',6726,6726) | inrange(``ffind'',6730,6733) | inr
+> ange(``ffind'',6790,6790) | inrange(``ffind'',6792,6792) | inrange(``ffind'',6794,6794) | inra
+> nge(``ffind'',6795,6795) | inrange(``ffind'',6798,6798) | inrange(``ffind'',6799,6799)
+ 79.                 qui replace `newvar'=17 if missing(`newvar') & ~missing(``ffind'')
+ 80. 
+.                 }
+ 81. 
+.         else if ``ftyp''==30 {
+ 82.                 label define `newvar' 1 "Food Products" 2 "Beer & Liquor" 3 "Tobacco Produc
+> ts" 4 "Recreation" 5 "Printing and Publishing" 6 "Consumer Goods" 7 "Apparel" 8 "Healthcare, M
+> edical Equipment, Pharmaceutical Products" 9 "Chemicals" 10 "Textiles" 11 "Construction and Co
+> nstruction Materials" 12 "Steel Works Etc" 13 "Fabricated Products and Machinery" 14 "Electric
+> al Equipment" 15 "Automobiles and Trucks" 16 "Aircraft, ships, and railroad equipment" 17 "Pre
+> cious Metals, Non-Metallic, and Industrial Metal Mining" 18 "Coal" 19 "Petroleum and Natural G
+> as" 20 "Utilities" 21 "Communication" 22 "Personal and Business Services" 23 "Business Equipme
+> nt" 24 "Business Supplies and Shipping Containers" 25 "Transportation" 26 "Wholesale" 27 "Reta
+> il" 28 "Restaraunts, Hotels, Motels" 29 "Banking, Insurance, Real Estate, Trading" 30 "Everyth
+> ing Else"
+ 83.                 label values `newvar' `newvar'
+ 84. 
+.                 qui replace `newvar'=1 if inrange(``ffind'',100,199) | inrange(``ffind'',200,2
+> 99) | inrange(``ffind'',700,799) | inrange(``ffind'',910,919) | inrange(``ffind'',2000,2009) |
+>  inrange(``ffind'',2010,2019) | inrange(``ffind'',2020,2029) | inrange(``ffind'',2030,2039) | 
+> inrange(``ffind'',2040,2046) | inrange(``ffind'',2048,2048) | inrange(``ffind'',2050,2059) | i
+> nrange(``ffind'',2060,2063) | inrange(``ffind'',2064,2068) | inrange(``ffind'',2070,2079) | in
+> range(``ffind'',2086,2086) | inrange(``ffind'',2087,2087) | inrange(``ffind'',2090,2092) | inr
+> ange(``ffind'',2095,2095) | inrange(``ffind'',2096,2096) | inrange(``ffind'',2097,2097) | inra
+> nge(``ffind'',2098,2099)
+ 85.                 qui replace `newvar'=2 if inrange(``ffind'',2080,2080) | inrange(``ffind'',
+> 2082,2082) | inrange(``ffind'',2083,2083) | inrange(``ffind'',2084,2084) | inrange(``ffind'',2
+> 085,2085)
+ 86.                 qui replace `newvar'=3 if inrange(``ffind'',2100,2199)
+ 87.                 qui replace `newvar'=4 if inrange(``ffind'',920,999) | inrange(``ffind'',36
+> 50,3651) | inrange(``ffind'',3652,3652) | inrange(``ffind'',3732,3732) | inrange(``ffind'',393
+> 0,3931) | inrange(``ffind'',3940,3949) | inrange(``ffind'',7800,7829) | inrange(``ffind'',7830
+> ,7833) | inrange(``ffind'',7840,7841) | inrange(``ffind'',7900,7900) | inrange(``ffind'',7910,
+> 7911) | inrange(``ffind'',7920,7929) | inrange(``ffind'',7930,7933) | inrange(``ffind'',7940,7
+> 949) | inrange(``ffind'',7980,7980) | inrange(``ffind'',7990,7999)
+ 88.                 qui replace `newvar'=5 if inrange(``ffind'',2700,2709) | inrange(``ffind'',
+> 2710,2719) | inrange(``ffind'',2720,2729) | inrange(``ffind'',2730,2739) | inrange(``ffind'',2
+> 740,2749) | inrange(``ffind'',2750,2759) | inrange(``ffind'',2770,2771) | inrange(``ffind'',27
+> 80,2789) | inrange(``ffind'',2790,2799) | inrange(``ffind'',3993,3993)
+ 89.                 qui replace `newvar'=6 if inrange(``ffind'',2047,2047) | inrange(``ffind'',
+> 2391,2392) | inrange(``ffind'',2510,2519) | inrange(``ffind'',2590,2599) | inrange(``ffind'',2
+> 840,2843) | inrange(``ffind'',2844,2844) | inrange(``ffind'',3160,3161) | inrange(``ffind'',31
+> 70,3171) | inrange(``ffind'',3172,3172) | inrange(``ffind'',3190,3199) | inrange(``ffind'',322
+> 9,3229) | inrange(``ffind'',3260,3260) | inrange(``ffind'',3262,3263) | inrange(``ffind'',3269
+> ,3269) | inrange(``ffind'',3230,3231) | inrange(``ffind'',3630,3639) | inrange(``ffind'',3750,
+> 3751) | inrange(``ffind'',3800,3800) | inrange(``ffind'',3860,3861) | inrange(``ffind'',3870,3
+> 873) | inrange(``ffind'',3910,3911) | inrange(``ffind'',3914,3914) | inrange(``ffind'',3915,39
+> 15) | inrange(``ffind'',3960,3962) | inrange(``ffind'',3991,3991) | inrange(``ffind'',3995,399
+> 5)
+ 90.                 qui replace `newvar'=7 if inrange(``ffind'',2300,2390) | inrange(``ffind'',
+> 3020,3021) | inrange(``ffind'',3100,3111) | inrange(``ffind'',3130,3131) | inrange(``ffind'',3
+> 140,3149) | inrange(``ffind'',3150,3151) | inrange(``ffind'',3963,3965)
+ 91.                 qui replace `newvar'=8 if inrange(``ffind'',2830,2830) | inrange(``ffind'',
+> 2831,2831) | inrange(``ffind'',2833,2833) | inrange(``ffind'',2834,2834) | inrange(``ffind'',2
+> 835,2835) | inrange(``ffind'',2836,2836) | inrange(``ffind'',3693,3693) | inrange(``ffind'',38
+> 40,3849) | inrange(``ffind'',3850,3851) | inrange(``ffind'',8000,8099)
+ 92.                 qui replace `newvar'=9 if inrange(``ffind'',2800,2809) | inrange(``ffind'',
+> 2810,2819) | inrange(``ffind'',2820,2829) | inrange(``ffind'',2850,2859) | inrange(``ffind'',2
+> 860,2869) | inrange(``ffind'',2870,2879) | inrange(``ffind'',2890,2899)
+ 93.                 qui replace `newvar'=10 if inrange(``ffind'',2200,2269) | inrange(``ffind''
+> ,2270,2279) | inrange(``ffind'',2280,2284) | inrange(``ffind'',2290,2295) | inrange(``ffind'',
+> 2297,2297) | inrange(``ffind'',2298,2298) | inrange(``ffind'',2299,2299) | inrange(``ffind'',2
+> 393,2395) | inrange(``ffind'',2397,2399)
+ 94.                 qui replace `newvar'=11 if inrange(``ffind'',800,899) | inrange(``ffind'',1
+> 500,1511) | inrange(``ffind'',1520,1529) | inrange(``ffind'',1530,1539) | inrange(``ffind'',15
+> 40,1549) | inrange(``ffind'',1600,1699) | inrange(``ffind'',1700,1799) | inrange(``ffind'',240
+> 0,2439) | inrange(``ffind'',2450,2459) | inrange(``ffind'',2490,2499) | inrange(``ffind'',2660
+> ,2661) | inrange(``ffind'',2950,2952) | inrange(``ffind'',3200,3200) | inrange(``ffind'',3210,
+> 3211) | inrange(``ffind'',3240,3241) | inrange(``ffind'',3250,3259) | inrange(``ffind'',3261,3
+> 261) | inrange(``ffind'',3264,3264) | inrange(``ffind'',3270,3275) | inrange(``ffind'',3280,32
+> 81) | inrange(``ffind'',3290,3293) | inrange(``ffind'',3295,3299) | inrange(``ffind'',3420,342
+> 9) | inrange(``ffind'',3430,3433) | inrange(``ffind'',3440,3441) | inrange(``ffind'',3442,3442
+> ) | inrange(``ffind'',3446,3446) | inrange(``ffind'',3448,3448) | inrange(``ffind'',3449,3449)
+>  | inrange(``ffind'',3450,3451) | inrange(``ffind'',3452,3452) | inrange(``ffind'',3490,3499) 
+> | inrange(``ffind'',3996,3996)
+ 95.                 qui replace `newvar'=12 if inrange(``ffind'',3300,3300) | inrange(``ffind''
+> ,3310,3317) | inrange(``ffind'',3320,3325) | inrange(``ffind'',3330,3339) | inrange(``ffind'',
+> 3340,3341) | inrange(``ffind'',3350,3357) | inrange(``ffind'',3360,3369) | inrange(``ffind'',3
+> 370,3379) | inrange(``ffind'',3390,3399)
+ 96.                 qui replace `newvar'=13 if inrange(``ffind'',3400,3400) | inrange(``ffind''
+> ,3443,3443) | inrange(``ffind'',3444,3444) | inrange(``ffind'',3460,3469) | inrange(``ffind'',
+> 3470,3479) | inrange(``ffind'',3510,3519) | inrange(``ffind'',3520,3529) | inrange(``ffind'',3
+> 530,3530) | inrange(``ffind'',3531,3531) | inrange(``ffind'',3532,3532) | inrange(``ffind'',35
+> 33,3533) | inrange(``ffind'',3534,3534) | inrange(``ffind'',3535,3535) | inrange(``ffind'',353
+> 6,3536) | inrange(``ffind'',3538,3538) | inrange(``ffind'',3540,3549) | inrange(``ffind'',3550
+> ,3559) | inrange(``ffind'',3560,3569) | inrange(``ffind'',3580,3580) | inrange(``ffind'',3581,
+> 3581) | inrange(``ffind'',3582,3582) | inrange(``ffind'',3585,3585) | inrange(``ffind'',3586,3
+> 586) | inrange(``ffind'',3589,3589) | inrange(``ffind'',3590,3599)
+ 97.                 qui replace `newvar'=14 if inrange(``ffind'',3600,3600) | inrange(``ffind''
+> ,3610,3613) | inrange(``ffind'',3620,3621) | inrange(``ffind'',3623,3629) | inrange(``ffind'',
+> 3640,3644) | inrange(``ffind'',3645,3645) | inrange(``ffind'',3646,3646) | inrange(``ffind'',3
+> 648,3649) | inrange(``ffind'',3660,3660) | inrange(``ffind'',3690,3690) | inrange(``ffind'',36
+> 91,3692) | inrange(``ffind'',3699,3699)
+ 98.                 qui replace `newvar'=15 if inrange(``ffind'',2296,2296) | inrange(``ffind''
+> ,2396,2396) | inrange(``ffind'',3010,3011) | inrange(``ffind'',3537,3537) | inrange(``ffind'',
+> 3647,3647) | inrange(``ffind'',3694,3694) | inrange(``ffind'',3700,3700) | inrange(``ffind'',3
+> 710,3710) | inrange(``ffind'',3711,3711) | inrange(``ffind'',3713,3713) | inrange(``ffind'',37
+> 14,3714) | inrange(``ffind'',3715,3715) | inrange(``ffind'',3716,3716) | inrange(``ffind'',379
+> 2,3792) | inrange(``ffind'',3790,3791) | inrange(``ffind'',3799,3799)
+ 99.                 qui replace `newvar'=16 if inrange(``ffind'',3720,3720) | inrange(``ffind''
+> ,3721,3721) | inrange(``ffind'',3723,3724) | inrange(``ffind'',3725,3725) | inrange(``ffind'',
+> 3728,3729) | inrange(``ffind'',3730,3731) | inrange(``ffind'',3740,3743)
+100.                 qui replace `newvar'=17 if inrange(``ffind'',1000,1009) | inrange(``ffind''
+> ,1010,1019) | inrange(``ffind'',1020,1029) | inrange(``ffind'',1030,1039) | inrange(``ffind'',
+> 1040,1049) | inrange(``ffind'',1050,1059) | inrange(``ffind'',1060,1069) | inrange(``ffind'',1
+> 070,1079) | inrange(``ffind'',1080,1089) | inrange(``ffind'',1090,1099) | inrange(``ffind'',11
+> 00,1119) | inrange(``ffind'',1400,1499)
+101.                 qui replace `newvar'=18 if inrange(``ffind'',1200,1299)
+102.                 qui replace `newvar'=19 if inrange(``ffind'',1300,1300) | inrange(``ffind''
+> ,1310,1319) | inrange(``ffind'',1320,1329) | inrange(``ffind'',1330,1339) | inrange(``ffind'',
+> 1370,1379) | inrange(``ffind'',1380,1380) | inrange(``ffind'',1381,1381) | inrange(``ffind'',1
+> 382,1382) | inrange(``ffind'',1389,1389) | inrange(``ffind'',2900,2912) | inrange(``ffind'',29
+> 90,2999)
+103.                 qui replace `newvar'=20 if inrange(``ffind'',4900,4900) | inrange(``ffind''
+> ,4910,4911) | inrange(``ffind'',4920,4922) | inrange(``ffind'',4923,4923) | inrange(``ffind'',
+> 4924,4925) | inrange(``ffind'',4930,4931) | inrange(``ffind'',4932,4932) | inrange(``ffind'',4
+> 939,4939) | inrange(``ffind'',4940,4942)
+104.                 qui replace `newvar'=21 if inrange(``ffind'',4800,4800) | inrange(``ffind''
+> ,4810,4813) | inrange(``ffind'',4820,4822) | inrange(``ffind'',4830,4839) | inrange(``ffind'',
+> 4840,4841) | inrange(``ffind'',4880,4889) | inrange(``ffind'',4890,4890) | inrange(``ffind'',4
+> 891,4891) | inrange(``ffind'',4892,4892) | inrange(``ffind'',4899,4899)
+105.                 qui replace `newvar'=22 if inrange(``ffind'',7020,7021) | inrange(``ffind''
+> ,7030,7033) | inrange(``ffind'',7200,7200) | inrange(``ffind'',7210,7212) | inrange(``ffind'',
+> 7214,7214) | inrange(``ffind'',7215,7216) | inrange(``ffind'',7217,7217) | inrange(``ffind'',7
+> 218,7218) | inrange(``ffind'',7219,7219) | inrange(``ffind'',7220,7221) | inrange(``ffind'',72
+> 30,7231) | inrange(``ffind'',7240,7241) | inrange(``ffind'',7250,7251) | inrange(``ffind'',726
+> 0,7269) | inrange(``ffind'',7270,7290) | inrange(``ffind'',7291,7291) | inrange(``ffind'',7292
+> ,7299) | inrange(``ffind'',7300,7300) | inrange(``ffind'',7310,7319) | inrange(``ffind'',7320,
+> 7329) | inrange(``ffind'',7330,7339) | inrange(``ffind'',7340,7342) | inrange(``ffind'',7349,7
+> 349) | inrange(``ffind'',7350,7351) | inrange(``ffind'',7352,7352) | inrange(``ffind'',7353,73
+> 53) | inrange(``ffind'',7359,7359) | inrange(``ffind'',7360,7369) | inrange(``ffind'',7370,737
+> 2) | inrange(``ffind'',7374,7374) | inrange(``ffind'',7375,7375) | inrange(``ffind'',7376,7376
+> ) | inrange(``ffind'',7377,7377) | inrange(``ffind'',7378,7378) | inrange(``ffind'',7379,7379)
+>  | inrange(``ffind'',7380,7380) | inrange(``ffind'',7381,7382) | inrange(``ffind'',7383,7383) 
+> | inrange(``ffind'',7384,7384) | inrange(``ffind'',7385,7385) | inrange(``ffind'',7389,7390) |
+>  inrange(``ffind'',7391,7391) | inrange(``ffind'',7392,7392) | inrange(``ffind'',7393,7393) | 
+> inrange(``ffind'',7394,7394) | inrange(``ffind'',7395,7395) | inrange(``ffind'',7396,7396) | i
+> nrange(``ffind'',7397,7397) | inrange(``ffind'',7399,7399) | inrange(``ffind'',7500,7500) | in
+> range(``ffind'',7510,7519) | inrange(``ffind'',7520,7529) | inrange(``ffind'',7530,7539) | inr
+> ange(``ffind'',7540,7549) | inrange(``ffind'',7600,7600) | inrange(``ffind'',7620,7620) | inra
+> nge(``ffind'',7622,7622) | inrange(``ffind'',7623,7623) | inrange(``ffind'',7629,7629) | inran
+> ge(``ffind'',7630,7631) | inrange(``ffind'',7640,7641) | inrange(``ffind'',7690,7699) | inrang
+> e(``ffind'',8100,8199) | inrange(``ffind'',8200,8299) | inrange(``ffind'',8300,8399) | inrange
+> (``ffind'',8400,8499) | inrange(``ffind'',8600,8699) | inrange(``ffind'',8700,8700) | inrange(
+> ``ffind'',8710,8713) | inrange(``ffind'',8720,8721) | inrange(``ffind'',8730,8734) | inrange(`
+> `ffind'',8740,8748) | inrange(``ffind'',8800,8899) | inrange(``ffind'',8900,8910) | inrange(``
+> ffind'',8911,8911) | inrange(``ffind'',8920,8999)
+106.                 qui replace `newvar'=23 if inrange(``ffind'',3570,3579) | inrange(``ffind''
+> ,3622,3622) | inrange(``ffind'',3661,3661) | inrange(``ffind'',3662,3662) | inrange(``ffind'',
+> 3663,3663) | inrange(``ffind'',3664,3664) | inrange(``ffind'',3665,3665) | inrange(``ffind'',3
+> 666,3666) | inrange(``ffind'',3669,3669) | inrange(``ffind'',3670,3679) | inrange(``ffind'',36
+> 80,3680) | inrange(``ffind'',3681,3681) | inrange(``ffind'',3682,3682) | inrange(``ffind'',368
+> 3,3683) | inrange(``ffind'',3684,3684) | inrange(``ffind'',3685,3685) | inrange(``ffind'',3686
+> ,3686) | inrange(``ffind'',3687,3687) | inrange(``ffind'',3688,3688) | inrange(``ffind'',3689,
+> 3689) | inrange(``ffind'',3695,3695) | inrange(``ffind'',3810,3810) | inrange(``ffind'',3811,3
+> 811) | inrange(``ffind'',3812,3812) | inrange(``ffind'',3820,3820) | inrange(``ffind'',3821,38
+> 21) | inrange(``ffind'',3822,3822) | inrange(``ffind'',3823,3823) | inrange(``ffind'',3824,382
+> 4) | inrange(``ffind'',3825,3825) | inrange(``ffind'',3826,3826) | inrange(``ffind'',3827,3827
+> ) | inrange(``ffind'',3829,3829) | inrange(``ffind'',3830,3839) | inrange(``ffind'',7373,7373)
+107.                 qui replace `newvar'=24 if inrange(``ffind'',2440,2449) | inrange(``ffind''
+> ,2520,2549) | inrange(``ffind'',2600,2639) | inrange(``ffind'',2640,2659) | inrange(``ffind'',
+> 2670,2699) | inrange(``ffind'',2760,2761) | inrange(``ffind'',3220,3221) | inrange(``ffind'',3
+> 410,3412) | inrange(``ffind'',3950,3955)
+108.                 qui replace `newvar'=25 if inrange(``ffind'',4000,4013) | inrange(``ffind''
+> ,4040,4049) | inrange(``ffind'',4100,4100) | inrange(``ffind'',4110,4119) | inrange(``ffind'',
+> 4120,4121) | inrange(``ffind'',4130,4131) | inrange(``ffind'',4140,4142) | inrange(``ffind'',4
+> 150,4151) | inrange(``ffind'',4170,4173) | inrange(``ffind'',4190,4199) | inrange(``ffind'',42
+> 00,4200) | inrange(``ffind'',4210,4219) | inrange(``ffind'',4220,4229) | inrange(``ffind'',423
+> 0,4231) | inrange(``ffind'',4240,4249) | inrange(``ffind'',4400,4499) | inrange(``ffind'',4500
+> ,4599) | inrange(``ffind'',4600,4699) | inrange(``ffind'',4700,4700) | inrange(``ffind'',4710,
+> 4712) | inrange(``ffind'',4720,4729) | inrange(``ffind'',4730,4739) | inrange(``ffind'',4740,4
+> 749) | inrange(``ffind'',4780,4780) | inrange(``ffind'',4782,4782) | inrange(``ffind'',4783,47
+> 83) | inrange(``ffind'',4784,4784) | inrange(``ffind'',4785,4785) | inrange(``ffind'',4789,478
+> 9)
+109.                 qui replace `newvar'=26 if inrange(``ffind'',5000,5000) | inrange(``ffind''
+> ,5010,5015) | inrange(``ffind'',5020,5023) | inrange(``ffind'',5030,5039) | inrange(``ffind'',
+> 5040,5042) | inrange(``ffind'',5043,5043) | inrange(``ffind'',5044,5044) | inrange(``ffind'',5
+> 045,5045) | inrange(``ffind'',5046,5046) | inrange(``ffind'',5047,5047) | inrange(``ffind'',50
+> 48,5048) | inrange(``ffind'',5049,5049) | inrange(``ffind'',5050,5059) | inrange(``ffind'',506
+> 0,5060) | inrange(``ffind'',5063,5063) | inrange(``ffind'',5064,5064) | inrange(``ffind'',5065
+> ,5065) | inrange(``ffind'',5070,5078) | inrange(``ffind'',5080,5080) | inrange(``ffind'',5081,
+> 5081) | inrange(``ffind'',5082,5082) | inrange(``ffind'',5083,5083) | inrange(``ffind'',5084,5
+> 084) | inrange(``ffind'',5085,5085) | inrange(``ffind'',5086,5087) | inrange(``ffind'',5088,50
+> 88) | inrange(``ffind'',5090,5090) | inrange(``ffind'',5091,5092) | inrange(``ffind'',5093,509
+> 3) | inrange(``ffind'',5094,5094) | inrange(``ffind'',5099,5099) | inrange(``ffind'',5100,5100
+> ) | inrange(``ffind'',5110,5113) | inrange(``ffind'',5120,5122) | inrange(``ffind'',5130,5139)
+>  | inrange(``ffind'',5140,5149) | inrange(``ffind'',5150,5159) | inrange(``ffind'',5160,5169) 
+> | inrange(``ffind'',5170,5172) | inrange(``ffind'',5180,5182) | inrange(``ffind'',5190,5199)
+110.                 qui replace `newvar'=27 if inrange(``ffind'',5200,5200) | inrange(``ffind''
+> ,5210,5219) | inrange(``ffind'',5220,5229) | inrange(``ffind'',5230,5231) | inrange(``ffind'',
+> 5250,5251) | inrange(``ffind'',5260,5261) | inrange(``ffind'',5270,5271) | inrange(``ffind'',5
+> 300,5300) | inrange(``ffind'',5310,5311) | inrange(``ffind'',5320,5320) | inrange(``ffind'',53
+> 30,5331) | inrange(``ffind'',5334,5334) | inrange(``ffind'',5340,5349) | inrange(``ffind'',539
+> 0,5399) | inrange(``ffind'',5400,5400) | inrange(``ffind'',5410,5411) | inrange(``ffind'',5412
+> ,5412) | inrange(``ffind'',5420,5429) | inrange(``ffind'',5430,5439) | inrange(``ffind'',5440,
+> 5449) | inrange(``ffind'',5450,5459) | inrange(``ffind'',5460,5469) | inrange(``ffind'',5490,5
+> 499) | inrange(``ffind'',5500,5500) | inrange(``ffind'',5510,5529) | inrange(``ffind'',5530,55
+> 39) | inrange(``ffind'',5540,5549) | inrange(``ffind'',5550,5559) | inrange(``ffind'',5560,556
+> 9) | inrange(``ffind'',5570,5579) | inrange(``ffind'',5590,5599) | inrange(``ffind'',5600,5699
+> ) | inrange(``ffind'',5700,5700) | inrange(``ffind'',5710,5719) | inrange(``ffind'',5720,5722)
+>  | inrange(``ffind'',5730,5733) | inrange(``ffind'',5734,5734) | inrange(``ffind'',5735,5735) 
+> | inrange(``ffind'',5736,5736) | inrange(``ffind'',5750,5799) | inrange(``ffind'',5900,5900) |
+>  inrange(``ffind'',5910,5912) | inrange(``ffind'',5920,5929) | inrange(``ffind'',5930,5932) | 
+> inrange(``ffind'',5940,5940) | inrange(``ffind'',5941,5941) | inrange(``ffind'',5942,5942) | i
+> nrange(``ffind'',5943,5943) | inrange(``ffind'',5944,5944) | inrange(``ffind'',5945,5945) | in
+> range(``ffind'',5946,5946) | inrange(``ffind'',5947,5947) | inrange(``ffind'',5948,5948) | inr
+> ange(``ffind'',5949,5949) | inrange(``ffind'',5950,5959) | inrange(``ffind'',5960,5969) | inra
+> nge(``ffind'',5970,5979) | inrange(``ffind'',5980,5989) | inrange(``ffind'',5990,5990) | inran
+> ge(``ffind'',5992,5992) | inrange(``ffind'',5993,5993) | inrange(``ffind'',5994,5994) | inrang
+> e(``ffind'',5995,5995) | inrange(``ffind'',5999,5999)
+111.                 qui replace `newvar'=28 if inrange(``ffind'',5800,5819) | inrange(``ffind''
+> ,5820,5829) | inrange(``ffind'',5890,5899) | inrange(``ffind'',7000,7000) | inrange(``ffind'',
+> 7010,7019) | inrange(``ffind'',7040,7049) | inrange(``ffind'',7213,7213)
+112.                 qui replace `newvar'=29 if inrange(``ffind'',6000,6000) | inrange(``ffind''
+> ,6010,6019) | inrange(``ffind'',6020,6020) | inrange(``ffind'',6021,6021) | inrange(``ffind'',
+> 6022,6022) | inrange(``ffind'',6023,6024) | inrange(``ffind'',6025,6025) | inrange(``ffind'',6
+> 026,6026) | inrange(``ffind'',6027,6027) | inrange(``ffind'',6028,6029) | inrange(``ffind'',60
+> 30,6036) | inrange(``ffind'',6040,6059) | inrange(``ffind'',6060,6062) | inrange(``ffind'',608
+> 0,6082) | inrange(``ffind'',6090,6099) | inrange(``ffind'',6100,6100) | inrange(``ffind'',6110
+> ,6111) | inrange(``ffind'',6112,6113) | inrange(``ffind'',6120,6129) | inrange(``ffind'',6130,
+> 6139) | inrange(``ffind'',6140,6149) | inrange(``ffind'',6150,6159) | inrange(``ffind'',6160,6
+> 169) | inrange(``ffind'',6170,6179) | inrange(``ffind'',6190,6199) | inrange(``ffind'',6200,62
+> 99) | inrange(``ffind'',6300,6300) | inrange(``ffind'',6310,6319) | inrange(``ffind'',6320,632
+> 9) | inrange(``ffind'',6330,6331) | inrange(``ffind'',6350,6351) | inrange(``ffind'',6360,6361
+> ) | inrange(``ffind'',6370,6379) | inrange(``ffind'',6390,6399) | inrange(``ffind'',6400,6411)
+>  | inrange(``ffind'',6500,6500) | inrange(``ffind'',6510,6510) | inrange(``ffind'',6512,6512) 
+> | inrange(``ffind'',6513,6513) | inrange(``ffind'',6514,6514) | inrange(``ffind'',6515,6515) |
+>  inrange(``ffind'',6517,6519) | inrange(``ffind'',6520,6529) | inrange(``ffind'',6530,6531) | 
+> inrange(``ffind'',6532,6532) | inrange(``ffind'',6540,6541) | inrange(``ffind'',6550,6553) | i
+> nrange(``ffind'',6590,6599) | inrange(``ffind'',6610,6611) | inrange(``ffind'',6700,6700) | in
+> range(``ffind'',6710,6719) | inrange(``ffind'',6720,6722) | inrange(``ffind'',6723,6723) | inr
+> ange(``ffind'',6724,6724) | inrange(``ffind'',6725,6725) | inrange(``ffind'',6726,6726) | inra
+> nge(``ffind'',6730,6733) | inrange(``ffind'',6740,6779) | inrange(``ffind'',6790,6791) | inran
+> ge(``ffind'',6792,6792) | inrange(``ffind'',6793,6793) | inrange(``ffind'',6794,6794) | inrang
+> e(``ffind'',6795,6795) | inrange(``ffind'',6798,6798) | inrange(``ffind'',6799,6799)
+113.                 qui replace `newvar'=30 if missing(`newvar') & ~missing(``ffind'')
+114.                 }
+115. 
+.         else if ``ftyp''==38 {
+116.                 label define `newvar' 1 "Agriculture, forestry, and fishing" 2 "Mining" 3 "
+> Oil and Gas Extraction" 4 "Nonmetalic Minerals Except Fuels" 5 "Construction" 6 "Food and Kind
+> red Products" 7 "Tobacco Products" 8 "Textile Mill Products" 9 "Apparel and other Textile Prod
+> ucts" 10 "Lumber and Wood Products" 11 "Furniture and Fixtures" 12 "Paper and Allied Products"
+>  13 "Printing and Publishing" 14 "Chemicals and Allied Products" 15 "Petroleum and Coal Produc
+> ts" 16 "Rubber and Miscellaneous Plastics Products" 17 "Leather and Leather Products" 18 "Ston
+> e, Clay and Glass Products" 19 "Primary Metal Industries" 20 "Fabricated Metal Products" 21 "M
+> achinery, Except Electrical" 22 "Electrical and Electronic Equipment" 23 "Transportation Equip
+> ment" 24 "Instruments and Related Products" 25 "Miscellaneous Manufacturing Industries" 26 "Tr
+> ansportation" 27 "Telephone and Telegraph Communication" 28 "Radio and Television Broadcasting
+> " 29 "Electric, Gas, and Water Supply" 30 "Sanitary Services" 31 "Steam Supply" 32 "Irrigation
+>  Systems" 33 "Wholesale" 34 "Retail Stores" 35 "Finance, Insurance, and Real Estate" 36 "Servi
+> ces" 37 "Public Administration" 38 "Almost Nothing"
+117.                 label values `newvar' `newvar'
+118. 
+.                 qui replace `newvar'=1 if inrange(``ffind'',100,999)
+119.                 qui replace `newvar'=2 if inrange(``ffind'',1000,1299)
+120.                 qui replace `newvar'=3 if inrange(``ffind'',1300,1399)
+121.                 qui replace `newvar'=4 if inrange(``ffind'',1400,1499)
+122.                 qui replace `newvar'=5 if inrange(``ffind'',1500,1799)
+123.                 qui replace `newvar'=6 if inrange(``ffind'',2000,2099)
+124.                 qui replace `newvar'=7 if inrange(``ffind'',2100,2199)
+125.                 qui replace `newvar'=8 if inrange(``ffind'',2200,2299)
+126.                 qui replace `newvar'=9 if inrange(``ffind'',2300,2399)
+127.                 qui replace `newvar'=10 if inrange(``ffind'',2400,2499)
+128.                 qui replace `newvar'=11 if inrange(``ffind'',2500,2599)
+129.                 qui replace `newvar'=12 if inrange(``ffind'',2600,2661)
+130.                 qui replace `newvar'=13 if inrange(``ffind'',2700,2799)
+131.                 qui replace `newvar'=14 if inrange(``ffind'',2800,2899)
+132.                 qui replace `newvar'=15 if inrange(``ffind'',2900,2999)
+133.                 qui replace `newvar'=16 if inrange(``ffind'',3000,3099)
+134.                 qui replace `newvar'=17 if inrange(``ffind'',3100,3199)
+135.                 qui replace `newvar'=18 if inrange(``ffind'',3200,3299)
+136.                 qui replace `newvar'=19 if inrange(``ffind'',3300,3399)
+137.                 qui replace `newvar'=20 if inrange(``ffind'',3400,3499)
+138.                 qui replace `newvar'=21 if inrange(``ffind'',3500,3599)
+139.                 qui replace `newvar'=22 if inrange(``ffind'',3600,3699)
+140.                 qui replace `newvar'=23 if inrange(``ffind'',3700,3799)
+141.                 qui replace `newvar'=24 if inrange(``ffind'',3800,3879)
+142.                 qui replace `newvar'=25 if inrange(``ffind'',3900,3999)
+143.                 qui replace `newvar'=26 if inrange(``ffind'',4000,4799)
+144.                 qui replace `newvar'=27 if inrange(``ffind'',4800,4829)
+145.                 qui replace `newvar'=28 if inrange(``ffind'',4830,4899)
+146.                 qui replace `newvar'=29 if inrange(``ffind'',4900,4949)
+147.                 qui replace `newvar'=30 if inrange(``ffind'',4950,4959)
+148.                 qui replace `newvar'=31 if inrange(``ffind'',4960,4969)
+149.                 qui replace `newvar'=32 if inrange(``ffind'',4970,4979)
+150.                 qui replace `newvar'=33 if inrange(``ffind'',5000,5199)
+151.                 qui replace `newvar'=34 if inrange(``ffind'',5200,5999)
+152.                 qui replace `newvar'=35 if inrange(``ffind'',6000,6999)
+153.                 qui replace `newvar'=36 if inrange(``ffind'',7000,8999)
+154.                 qui replace `newvar'=37 if inrange(``ffind'',9000,9999)
+155.                 qui replace `newvar'=38 if missing(`newvar') & ~missing(``ffind'')
+156. 
+.                 }
+157.         else if ``ftyp''==48 {
+158.                 label define `newvar' 1 "Agriculture" 2 "Food Products" 3 "Candy & Soda" 4 
+> "Beer & Liquor" 5 "Tobacco Products" 6 "Recreation" 7 "Entertainment" 8 "Printing and Publishi
+> ng" 9 "Consumer Goods" 10 "Apparel" 11 "Healthcare" 12 "Medical Equipment" 13 "Pharmaceutical 
+> Products" 14 "Chemicals" 15 "Rubber and Plastic Products" 16 "Textiles" 17 "Construction Mater
+> ials" 18 "Construction" 19 "Steel Works Etc" 20 "Fabricated Products" 21 "Machinery" 22 "Elect
+> rical Equipment" 23 "Automobiles and Trucks" 24 "Aircraft" 25 "Shipbuilding, Railroad Equipmen
+> t" 26 "Defense" 27 "Precious Metals" 28 "Non-Metallic and Industrial Metal Mining" 29 "Coal" 3
+> 0 "Petroleum and Natural Gas" 31 "Utilities" 32 "Communication" 33 "Personal Services" 34 "Bus
+> iness Services" 35 "Computers" 36 "Electronic Equipment" 37 "Measuring and Control Equipment" 
+> 38 "Business Supplies" 39 "Shipping Containers" 40 "Transportation" 41 "Wholesale" 42 "Retail"
+>  43 "Restaraunts, Hotels, Motels" 44 "Banking" 45 "Insurance" 46 "Real Estate" 47 "Trading" 48
+>  "Almost Nothing"
+159.                 label values `newvar' `newvar'
+160. 
+.                 qui replace `newvar'=1 if inrange(``ffind'',100,199) | inrange(``ffind'',200,2
+> 99) | inrange(``ffind'',700,799) | inrange(``ffind'',910,919) | inrange(``ffind'',2048,2048)
+161.                 qui replace `newvar'=2 if inrange(``ffind'',2000,2009) | inrange(``ffind'',
+> 2010,2019) | inrange(``ffind'',2020,2029) | inrange(``ffind'',2030,2039) | inrange(``ffind'',2
+> 040,2046) | inrange(``ffind'',2050,2059) | inrange(``ffind'',2060,2063) | inrange(``ffind'',20
+> 70,2079) | inrange(``ffind'',2090,2092) | inrange(``ffind'',2095,2095) | inrange(``ffind'',209
+> 8,2099)
+162.                 qui replace `newvar'=3 if inrange(``ffind'',2064,2068) | inrange(``ffind'',
+> 2086,2086) | inrange(``ffind'',2087,2087) | inrange(``ffind'',2096,2096) | inrange(``ffind'',2
+> 097,2097)
+163.                 qui replace `newvar'=4 if inrange(``ffind'',2080,2080) | inrange(``ffind'',
+> 2082,2082) | inrange(``ffind'',2083,2083) | inrange(``ffind'',2084,2084) | inrange(``ffind'',2
+> 085,2085)
+164.                 qui replace `newvar'=5 if inrange(``ffind'',2100,2199)
+165.                 qui replace `newvar'=6 if inrange(``ffind'',920,999) | inrange(``ffind'',36
+> 50,3651) | inrange(``ffind'',3652,3652) | inrange(``ffind'',3732,3732) | inrange(``ffind'',393
+> 0,3931) | inrange(``ffind'',3940,3949)
+166.                 qui replace `newvar'=7 if inrange(``ffind'',7800,7829) | inrange(``ffind'',
+> 7830,7833) | inrange(``ffind'',7840,7841) | inrange(``ffind'',7900,7900) | inrange(``ffind'',7
+> 910,7911) | inrange(``ffind'',7920,7929) | inrange(``ffind'',7930,7933) | inrange(``ffind'',79
+> 40,7949) | inrange(``ffind'',7980,7980) | inrange(``ffind'',7990,7999)
+167.                 qui replace `newvar'=8 if inrange(``ffind'',2700,2709) | inrange(``ffind'',
+> 2710,2719) | inrange(``ffind'',2720,2729) | inrange(``ffind'',2730,2739) | inrange(``ffind'',2
+> 740,2749) | inrange(``ffind'',2770,2771) | inrange(``ffind'',2780,2789) | inrange(``ffind'',27
+> 90,2799)
+168.                 qui replace `newvar'=9 if inrange(``ffind'',2047,2047) | inrange(``ffind'',
+> 2391,2392) | inrange(``ffind'',2510,2519) | inrange(``ffind'',2590,2599) | inrange(``ffind'',2
+> 840,2843) | inrange(``ffind'',2844,2844) | inrange(``ffind'',3160,3161) | inrange(``ffind'',31
+> 70,3171) | inrange(``ffind'',3172,3172) | inrange(``ffind'',3190,3199) | inrange(``ffind'',322
+> 9,3229) | inrange(``ffind'',3260,3260) | inrange(``ffind'',3262,3263) | inrange(``ffind'',3269
+> ,3269) | inrange(``ffind'',3230,3231) | inrange(``ffind'',3630,3639) | inrange(``ffind'',3750,
+> 3751) | inrange(``ffind'',3800,3800) | inrange(``ffind'',3860,3861) | inrange(``ffind'',3870,3
+> 873) | inrange(``ffind'',3910,3911) | inrange(``ffind'',3914,3914) | inrange(``ffind'',3915,39
+> 15) | inrange(``ffind'',3960,3962) | inrange(``ffind'',3991,3991) | inrange(``ffind'',3995,399
+> 5)
+169.                 qui replace `newvar'=10 if inrange(``ffind'',2300,2390) | inrange(``ffind''
+> ,3020,3021) | inrange(``ffind'',3100,3111) | inrange(``ffind'',3130,3131) | inrange(``ffind'',
+> 3140,3149) | inrange(``ffind'',3150,3151) | inrange(``ffind'',3963,3965)
+170.                 qui replace `newvar'=11 if inrange(``ffind'',8000,8099)
+171.                 qui replace `newvar'=12 if inrange(``ffind'',3693,3693) | inrange(``ffind''
+> ,3840,3849) | inrange(``ffind'',3850,3851)
+172.                 qui replace `newvar'=13 if inrange(``ffind'',2830,2830) | inrange(``ffind''
+> ,2831,2831) | inrange(``ffind'',2833,2833) | inrange(``ffind'',2834,2834) | inrange(``ffind'',
+> 2835,2835) | inrange(``ffind'',2836,2836)
+173.                 qui replace `newvar'=14 if inrange(``ffind'',2800,2809) | inrange(``ffind''
+> ,2810,2819) | inrange(``ffind'',2820,2829) | inrange(``ffind'',2850,2859) | inrange(``ffind'',
+> 2860,2869) | inrange(``ffind'',2870,2879) | inrange(``ffind'',2890,2899)
+174.                 qui replace `newvar'=15 if inrange(``ffind'',3031,3031) | inrange(``ffind''
+> ,3041,3041) | inrange(``ffind'',3050,3053) | inrange(``ffind'',3060,3069) | inrange(``ffind'',
+> 3070,3079) | inrange(``ffind'',3080,3089) | inrange(``ffind'',3090,3099)
+175.                 qui replace `newvar'=16 if inrange(``ffind'',2200,2269) | inrange(``ffind''
+> ,2270,2279) | inrange(``ffind'',2280,2284) | inrange(``ffind'',2290,2295) | inrange(``ffind'',
+> 2297,2297) | inrange(``ffind'',2298,2298) | inrange(``ffind'',2299,2299) | inrange(``ffind'',2
+> 393,2395) | inrange(``ffind'',2397,2399)
+176.                 qui replace `newvar'=17 if inrange(``ffind'',800,899) | inrange(``ffind'',2
+> 400,2439) | inrange(``ffind'',2450,2459) | inrange(``ffind'',2490,2499) | inrange(``ffind'',26
+> 60,2661) | inrange(``ffind'',2950,2952) | inrange(``ffind'',3200,3200) | inrange(``ffind'',321
+> 0,3211) | inrange(``ffind'',3240,3241) | inrange(``ffind'',3250,3259) | inrange(``ffind'',3261
+> ,3261) | inrange(``ffind'',3264,3264) | inrange(``ffind'',3270,3275) | inrange(``ffind'',3280,
+> 3281) | inrange(``ffind'',3290,3293) | inrange(``ffind'',3295,3299) | inrange(``ffind'',3420,3
+> 429) | inrange(``ffind'',3430,3433) | inrange(``ffind'',3440,3441) | inrange(``ffind'',3442,34
+> 42) | inrange(``ffind'',3446,3446) | inrange(``ffind'',3448,3448) | inrange(``ffind'',3449,344
+> 9) | inrange(``ffind'',3450,3451) | inrange(``ffind'',3452,3452) | inrange(``ffind'',3490,3499
+> ) | inrange(``ffind'',3996,3996)
+177.                 qui replace `newvar'=18 if inrange(``ffind'',1500,1511) | inrange(``ffind''
+> ,1520,1529) | inrange(``ffind'',1530,1539) | inrange(``ffind'',1540,1549) | inrange(``ffind'',
+> 1600,1699) | inrange(``ffind'',1700,1799)
+178.                 qui replace `newvar'=19 if inrange(``ffind'',3300,3300) | inrange(``ffind''
+> ,3310,3317) | inrange(``ffind'',3320,3325) | inrange(``ffind'',3330,3339) | inrange(``ffind'',
+> 3340,3341) | inrange(``ffind'',3350,3357) | inrange(``ffind'',3360,3369) | inrange(``ffind'',3
+> 370,3379) | inrange(``ffind'',3390,3399)
+179.                 qui replace `newvar'=20 if inrange(``ffind'',3400,3400) | inrange(``ffind''
+> ,3443,3443) | inrange(``ffind'',3444,3444) | inrange(``ffind'',3460,3469) | inrange(``ffind'',
+> 3470,3479)
+180.                 qui replace `newvar'=21 if inrange(``ffind'',3510,3519) | inrange(``ffind''
+> ,3520,3529) | inrange(``ffind'',3530,3530) | inrange(``ffind'',3531,3531) | inrange(``ffind'',
+> 3532,3532) | inrange(``ffind'',3533,3533) | inrange(``ffind'',3534,3534) | inrange(``ffind'',3
+> 535,3535) | inrange(``ffind'',3536,3536) | inrange(``ffind'',3538,3538) | inrange(``ffind'',35
+> 40,3549) | inrange(``ffind'',3550,3559) | inrange(``ffind'',3560,3569) | inrange(``ffind'',358
+> 0,3580) | inrange(``ffind'',3581,3581) | inrange(``ffind'',3582,3582) | inrange(``ffind'',3585
+> ,3585) | inrange(``ffind'',3586,3586) | inrange(``ffind'',3589,3589) | inrange(``ffind'',3590,
+> 3599)
+181.                 qui replace `newvar'=22 if inrange(``ffind'',3600,3600) | inrange(``ffind''
+> ,3610,3613) | inrange(``ffind'',3620,3621) | inrange(``ffind'',3623,3629) | inrange(``ffind'',
+> 3640,3644) | inrange(``ffind'',3645,3645) | inrange(``ffind'',3646,3646) | inrange(``ffind'',3
+> 648,3649) | inrange(``ffind'',3660,3660) | inrange(``ffind'',3690,3690) | inrange(``ffind'',36
+> 91,3692) | inrange(``ffind'',3699,3699)
+182.                 qui replace `newvar'=23 if inrange(``ffind'',2296,2296) | inrange(``ffind''
+> ,2396,2396) | inrange(``ffind'',3010,3011) | inrange(``ffind'',3537,3537) | inrange(``ffind'',
+> 3647,3647) | inrange(``ffind'',3694,3694) | inrange(``ffind'',3700,3700) | inrange(``ffind'',3
+> 710,3710) | inrange(``ffind'',3711,3711) | inrange(``ffind'',3713,3713) | inrange(``ffind'',37
+> 14,3714) | inrange(``ffind'',3715,3715) | inrange(``ffind'',3716,3716) | inrange(``ffind'',379
+> 2,3792) | inrange(``ffind'',3790,3791) | inrange(``ffind'',3799,3799)
+183.                 qui replace `newvar'=24 if inrange(``ffind'',3720,3720) | inrange(``ffind''
+> ,3721,3721) | inrange(``ffind'',3723,3724) | inrange(``ffind'',3725,3725) | inrange(``ffind'',
+> 3728,3729)
+184.                 qui replace `newvar'=25 if inrange(``ffind'',3730,3731) | inrange(``ffind''
+> ,3740,3743)
+185.                 qui replace `newvar'=26 if inrange(``ffind'',3760,3769) | inrange(``ffind''
+> ,3795,3795) | inrange(``ffind'',3480,3489)
+186.                 qui replace `newvar'=27 if inrange(``ffind'',1040,1049)
+187.                 qui replace `newvar'=28 if inrange(``ffind'',1000,1009) | inrange(``ffind''
+> ,1010,1019) | inrange(``ffind'',1020,1029) | inrange(``ffind'',1030,1039) | inrange(``ffind'',
+> 1050,1059) | inrange(``ffind'',1060,1069) | inrange(``ffind'',1070,1079) | inrange(``ffind'',1
+> 080,1089) | inrange(``ffind'',1090,1099) | inrange(``ffind'',1100,1119) | inrange(``ffind'',14
+> 00,1499)
+188.                 qui replace `newvar'=29 if inrange(``ffind'',1200,1299)
+189.                 qui replace `newvar'=30 if inrange(``ffind'',1300,1300) | inrange(``ffind''
+> ,1310,1319) | inrange(``ffind'',1320,1329) | inrange(``ffind'',1330,1339) | inrange(``ffind'',
+> 1370,1379) | inrange(``ffind'',1380,1380) | inrange(``ffind'',1381,1381) | inrange(``ffind'',1
+> 382,1382) | inrange(``ffind'',1389,1389) | inrange(``ffind'',2900,2912) | inrange(``ffind'',29
+> 90,2999)
+190.                 qui replace `newvar'=31 if inrange(``ffind'',4900,4900) | inrange(``ffind''
+> ,4910,4911) | inrange(``ffind'',4920,4922) | inrange(``ffind'',4923,4923) | inrange(``ffind'',
+> 4924,4925) | inrange(``ffind'',4930,4931) | inrange(``ffind'',4932,4932) | inrange(``ffind'',4
+> 939,4939) | inrange(``ffind'',4940,4942)
+191.                 qui replace `newvar'=32 if inrange(``ffind'',4800,4800) | inrange(``ffind''
+> ,4810,4813) | inrange(``ffind'',4820,4822) | inrange(``ffind'',4830,4839) | inrange(``ffind'',
+> 4840,4841) | inrange(``ffind'',4880,4889) | inrange(``ffind'',4890,4890) | inrange(``ffind'',4
+> 891,4891) | inrange(``ffind'',4892,4892) | inrange(``ffind'',4899,4899)
+192.                 qui replace `newvar'=33 if inrange(``ffind'',7020,7021) | inrange(``ffind''
+> ,7030,7033) | inrange(``ffind'',7200,7200) | inrange(``ffind'',7210,7212) | inrange(``ffind'',
+> 7214,7214) | inrange(``ffind'',7215,7216) | inrange(``ffind'',7217,7217) | inrange(``ffind'',7
+> 219,7219) | inrange(``ffind'',7220,7221) | inrange(``ffind'',7230,7231) | inrange(``ffind'',72
+> 40,7241) | inrange(``ffind'',7250,7251) | inrange(``ffind'',7260,7269) | inrange(``ffind'',727
+> 0,7290) | inrange(``ffind'',7291,7291) | inrange(``ffind'',7292,7299) | inrange(``ffind'',7395
+> ,7395) | inrange(``ffind'',7500,7500) | inrange(``ffind'',7520,7529) | inrange(``ffind'',7530,
+> 7539) | inrange(``ffind'',7540,7549) | inrange(``ffind'',7600,7600) | inrange(``ffind'',7620,7
+> 620) | inrange(``ffind'',7622,7622) | inrange(``ffind'',7623,7623) | inrange(``ffind'',7629,76
+> 29) | inrange(``ffind'',7630,7631) | inrange(``ffind'',7640,7641) | inrange(``ffind'',7690,769
+> 9) | inrange(``ffind'',8100,8199) | inrange(``ffind'',8200,8299) | inrange(``ffind'',8300,8399
+> ) | inrange(``ffind'',8400,8499) | inrange(``ffind'',8600,8699) | inrange(``ffind'',8800,8899)
+>  | inrange(``ffind'',7510,7515)
+193.                 qui replace `newvar'=34 if inrange(``ffind'',2750,2759) | inrange(``ffind''
+> ,3993,3993) | inrange(``ffind'',7218,7218) | inrange(``ffind'',7300,7300) | inrange(``ffind'',
+> 7310,7319) | inrange(``ffind'',7320,7329) | inrange(``ffind'',7330,7339) | inrange(``ffind'',7
+> 340,7342) | inrange(``ffind'',7349,7349) | inrange(``ffind'',7350,7351) | inrange(``ffind'',73
+> 52,7352) | inrange(``ffind'',7353,7353) | inrange(``ffind'',7359,7359) | inrange(``ffind'',736
+> 0,7369) | inrange(``ffind'',7370,7372) | inrange(``ffind'',7374,7374) | inrange(``ffind'',7375
+> ,7375) | inrange(``ffind'',7376,7376) | inrange(``ffind'',7377,7377) | inrange(``ffind'',7378,
+> 7378) | inrange(``ffind'',7379,7379) | inrange(``ffind'',7380,7380) | inrange(``ffind'',7381,7
+> 382) | inrange(``ffind'',7383,7383) | inrange(``ffind'',7384,7384) | inrange(``ffind'',7385,73
+> 85) | inrange(``ffind'',7389,7390) | inrange(``ffind'',7391,7391) | inrange(``ffind'',7392,739
+> 2) | inrange(``ffind'',7393,7393) | inrange(``ffind'',7394,7394) | inrange(``ffind'',7396,7396
+> ) | inrange(``ffind'',7397,7397) | inrange(``ffind'',7399,7399) | inrange(``ffind'',7519,7519)
+>  | inrange(``ffind'',8700,8700) | inrange(``ffind'',8710,8713) | inrange(``ffind'',8720,8721) 
+> | inrange(``ffind'',8730,8734) | inrange(``ffind'',8740,8748) | inrange(``ffind'',8900,8910) |
+>  inrange(``ffind'',8911,8911) | inrange(``ffind'',8920,8999) | inrange(``ffind'',4220,4229)
+194.                 qui replace `newvar'=35 if inrange(``ffind'',3570,3579) | inrange(``ffind''
+> ,3680,3680) | inrange(``ffind'',3681,3681) | inrange(``ffind'',3682,3682) | inrange(``ffind'',
+> 3683,3683) | inrange(``ffind'',3684,3684) | inrange(``ffind'',3685,3685) | inrange(``ffind'',3
+> 686,3686) | inrange(``ffind'',3687,3687) | inrange(``ffind'',3688,3688) | inrange(``ffind'',36
+> 89,3689) | inrange(``ffind'',3695,3695) | inrange(``ffind'',7373,7373)
+195.                 qui replace `newvar'=36 if inrange(``ffind'',3622,3622) | inrange(``ffind''
+> ,3661,3661) | inrange(``ffind'',3662,3662) | inrange(``ffind'',3663,3663) | inrange(``ffind'',
+> 3664,3664) | inrange(``ffind'',3665,3665) | inrange(``ffind'',3666,3666) | inrange(``ffind'',3
+> 669,3669) | inrange(``ffind'',3670,3679) | inrange(``ffind'',3810,3810) | inrange(``ffind'',38
+> 12,3812)
+196.                 qui replace `newvar'=37 if inrange(``ffind'',3811,3811) | inrange(``ffind''
+> ,3820,3820) | inrange(``ffind'',3821,3821) | inrange(``ffind'',3822,3822) | inrange(``ffind'',
+> 3823,3823) | inrange(``ffind'',3824,3824) | inrange(``ffind'',3825,3825) | inrange(``ffind'',3
+> 826,3826) | inrange(``ffind'',3827,3827) | inrange(``ffind'',3829,3829) | inrange(``ffind'',38
+> 30,3839)
+197.                 qui replace `newvar'=38 if inrange(``ffind'',2520,2549) | inrange(``ffind''
+> ,2600,2639) | inrange(``ffind'',2670,2699) | inrange(``ffind'',2760,2761) | inrange(``ffind'',
+> 3950,3955)
+198.                 qui replace `newvar'=39 if inrange(``ffind'',2440,2449) | inrange(``ffind''
+> ,2640,2659) | inrange(``ffind'',3220,3221) | inrange(``ffind'',3410,3412)
+199.                 qui replace `newvar'=40 if inrange(``ffind'',4000,4013) | inrange(``ffind''
+> ,4040,4049) | inrange(``ffind'',4100,4100) | inrange(``ffind'',4110,4119) | inrange(``ffind'',
+> 4120,4121) | inrange(``ffind'',4130,4131) | inrange(``ffind'',4140,4142) | inrange(``ffind'',4
+> 150,4151) | inrange(``ffind'',4170,4173) | inrange(``ffind'',4190,4199) | inrange(``ffind'',42
+> 00,4200) | inrange(``ffind'',4210,4219) | inrange(``ffind'',4230,4231) | inrange(``ffind'',424
+> 0,4249) | inrange(``ffind'',4400,4499) | inrange(``ffind'',4500,4599) | inrange(``ffind'',4600
+> ,4699) | inrange(``ffind'',4700,4700) | inrange(``ffind'',4710,4712) | inrange(``ffind'',4720,
+> 4729) | inrange(``ffind'',4730,4739) | inrange(``ffind'',4740,4749) | inrange(``ffind'',4780,4
+> 780) | inrange(``ffind'',4782,4782) | inrange(``ffind'',4783,4783) | inrange(``ffind'',4784,47
+> 84) | inrange(``ffind'',4785,4785) | inrange(``ffind'',4789,4789)
+200.                 qui replace `newvar'=41 if inrange(``ffind'',5000,5000) | inrange(``ffind''
+> ,5010,5015) | inrange(``ffind'',5020,5023) | inrange(``ffind'',5030,5039) | inrange(``ffind'',
+> 5040,5042) | inrange(``ffind'',5043,5043) | inrange(``ffind'',5044,5044) | inrange(``ffind'',5
+> 045,5045) | inrange(``ffind'',5046,5046) | inrange(``ffind'',5047,5047) | inrange(``ffind'',50
+> 48,5048) | inrange(``ffind'',5049,5049) | inrange(``ffind'',5050,5059) | inrange(``ffind'',506
+> 0,5060) | inrange(``ffind'',5063,5063) | inrange(``ffind'',5064,5064) | inrange(``ffind'',5065
+> ,5065) | inrange(``ffind'',5070,5078) | inrange(``ffind'',5080,5080) | inrange(``ffind'',5081,
+> 5081) | inrange(``ffind'',5082,5082) | inrange(``ffind'',5083,5083) | inrange(``ffind'',5084,5
+> 084) | inrange(``ffind'',5085,5085) | inrange(``ffind'',5086,5087) | inrange(``ffind'',5088,50
+> 88) | inrange(``ffind'',5090,5090) | inrange(``ffind'',5091,5092) | inrange(``ffind'',5093,509
+> 3) | inrange(``ffind'',5094,5094) | inrange(``ffind'',5099,5099) | inrange(``ffind'',5100,5100
+> ) | inrange(``ffind'',5110,5113) | inrange(``ffind'',5120,5122) | inrange(``ffind'',5130,5139)
+>  | inrange(``ffind'',5140,5149) | inrange(``ffind'',5150,5159) | inrange(``ffind'',5160,5169) 
+> | inrange(``ffind'',5170,5172) | inrange(``ffind'',5180,5182) | inrange(``ffind'',5190,5199)
+201.                 qui replace `newvar'=42 if inrange(``ffind'',5200,5200) | inrange(``ffind''
+> ,5210,5219) | inrange(``ffind'',5220,5229) | inrange(``ffind'',5230,5231) | inrange(``ffind'',
+> 5250,5251) | inrange(``ffind'',5260,5261) | inrange(``ffind'',5270,5271) | inrange(``ffind'',5
+> 300,5300) | inrange(``ffind'',5310,5311) | inrange(``ffind'',5320,5320) | inrange(``ffind'',53
+> 30,5331) | inrange(``ffind'',5334,5334) | inrange(``ffind'',5340,5349) | inrange(``ffind'',539
+> 0,5399) | inrange(``ffind'',5400,5400) | inrange(``ffind'',5410,5411) | inrange(``ffind'',5412
+> ,5412) | inrange(``ffind'',5420,5429) | inrange(``ffind'',5430,5439) | inrange(``ffind'',5440,
+> 5449) | inrange(``ffind'',5450,5459) | inrange(``ffind'',5460,5469) | inrange(``ffind'',5490,5
+> 499) | inrange(``ffind'',5500,5500) | inrange(``ffind'',5510,5529) | inrange(``ffind'',5530,55
+> 39) | inrange(``ffind'',5540,5549) | inrange(``ffind'',5550,5559) | inrange(``ffind'',5560,556
+> 9) | inrange(``ffind'',5570,5579) | inrange(``ffind'',5590,5599) | inrange(``ffind'',5600,5699
+> ) | inrange(``ffind'',5700,5700) | inrange(``ffind'',5710,5719) | inrange(``ffind'',5720,5722)
+>  | inrange(``ffind'',5730,5733) | inrange(``ffind'',5734,5734) | inrange(``ffind'',5735,5735) 
+> | inrange(``ffind'',5736,5736) | inrange(``ffind'',5750,5799) | inrange(``ffind'',5900,5900) |
+>  inrange(``ffind'',5910,5912) | inrange(``ffind'',5920,5929) | inrange(``ffind'',5930,5932) | 
+> inrange(``ffind'',5940,5940) | inrange(``ffind'',5941,5941) | inrange(``ffind'',5942,5942) | i
+> nrange(``ffind'',5943,5943) | inrange(``ffind'',5944,5944) | inrange(``ffind'',5945,5945) | in
+> range(``ffind'',5946,5946) | inrange(``ffind'',5947,5947) | inrange(``ffind'',5948,5948) | inr
+> ange(``ffind'',5949,5949) | inrange(``ffind'',5950,5959) | inrange(``ffind'',5960,5969) | inra
+> nge(``ffind'',5970,5979) | inrange(``ffind'',5980,5989) | inrange(``ffind'',5990,5990) | inran
+> ge(``ffind'',5992,5992) | inrange(``ffind'',5993,5993) | inrange(``ffind'',5994,5994) | inrang
+> e(``ffind'',5995,5995) | inrange(``ffind'',5999,5999)
+202.                 qui replace `newvar'=43 if inrange(``ffind'',5800,5819) | inrange(``ffind''
+> ,5820,5829) | inrange(``ffind'',5890,5899) | inrange(``ffind'',7000,7000) | inrange(``ffind'',
+> 7010,7019) | inrange(``ffind'',7040,7049) | inrange(``ffind'',7213,7213)
+203.                 qui replace `newvar'=44 if inrange(``ffind'',6000,6000) | inrange(``ffind''
+> ,6010,6019) | inrange(``ffind'',6020,6020) | inrange(``ffind'',6021,6021) | inrange(``ffind'',
+> 6022,6022) | inrange(``ffind'',6023,6024) | inrange(``ffind'',6025,6025) | inrange(``ffind'',6
+> 026,6026) | inrange(``ffind'',6027,6027) | inrange(``ffind'',6028,6029) | inrange(``ffind'',60
+> 30,6036) | inrange(``ffind'',6040,6059) | inrange(``ffind'',6060,6062) | inrange(``ffind'',608
+> 0,6082) | inrange(``ffind'',6090,6099) | inrange(``ffind'',6100,6100) | inrange(``ffind'',6110
+> ,6111) | inrange(``ffind'',6112,6113) | inrange(``ffind'',6120,6129) | inrange(``ffind'',6130,
+> 6139) | inrange(``ffind'',6140,6149) | inrange(``ffind'',6150,6159) | inrange(``ffind'',6160,6
+> 169) | inrange(``ffind'',6170,6179) | inrange(``ffind'',6190,6199)
+204.                 qui replace `newvar'=45 if inrange(``ffind'',6300,6300) | inrange(``ffind''
+> ,6310,6319) | inrange(``ffind'',6320,6329) | inrange(``ffind'',6330,6331) | inrange(``ffind'',
+> 6350,6351) | inrange(``ffind'',6360,6361) | inrange(``ffind'',6370,6379) | inrange(``ffind'',6
+> 390,6399) | inrange(``ffind'',6400,6411)
+205.                 qui replace `newvar'=46 if inrange(``ffind'',6500,6500) | inrange(``ffind''
+> ,6510,6510) | inrange(``ffind'',6512,6512) | inrange(``ffind'',6513,6513) | inrange(``ffind'',
+> 6514,6514) | inrange(``ffind'',6515,6515) | inrange(``ffind'',6517,6519) | inrange(``ffind'',6
+> 520,6529) | inrange(``ffind'',6530,6531) | inrange(``ffind'',6532,6532) | inrange(``ffind'',65
+> 40,6541) | inrange(``ffind'',6550,6553) | inrange(``ffind'',6590,6599) | inrange(``ffind'',661
+> 0,6611)
+206.                 qui replace `newvar'=47 if inrange(``ffind'',6200,6299) | inrange(``ffind''
+> ,6700,6700) | inrange(``ffind'',6710,6719) | inrange(``ffind'',6720,6722) | inrange(``ffind'',
+> 6723,6723) | inrange(``ffind'',6724,6724) | inrange(``ffind'',6725,6725) | inrange(``ffind'',6
+> 726,6726) | inrange(``ffind'',6730,6733) | inrange(``ffind'',6740,6779) | inrange(``ffind'',67
+> 90,6791) | inrange(``ffind'',6792,6792) | inrange(``ffind'',6793,6793) | inrange(``ffind'',679
+> 4,6794) | inrange(``ffind'',6795,6795) | inrange(``ffind'',6798,6798) | inrange(``ffind'',6799
+> ,6799)
+207.                 qui replace `newvar'=48 if missing(`newvar') & ~missing(``ffind'')
+208. 
+.                 }
+209.         else if ``ftyp''==49 {
+210.                 label define `newvar' 1 "Agriculture" 2 "Food Products" 3 "Candy & Soda" 4 
+> "Beer & Liquor" 5 "Tobacco Products" 6 "Recreation" 7 "Entertainment" 8 "Printing and Publishi
+> ng" 9 "Consumer Goods" 10 "Apparel" 11 "Healthcare" 12 "Medical Equipment" 13 "Pharmaceutical 
+> Products" 14 "Chemicals" 15 "Rubber and Plastic Products" 16 "Textiles" 17 "Construction Mater
+> ials" 18 "Construction" 19 "Steel Works Etc" 20 "Fabricated Products" 21 "Machinery" 22 "Elect
+> rical Equipment" 23 "Automobiles and Trucks" 24 "Aircraft" 25 "Shipbuilding, Railroad Equipmen
+> t" 26 "Defense" 27 "Precious Metals" 28 "Non-Metallic and Industrial Metal Mining" 29 "Coal" 3
+> 0 "Petroleum and Natural Gas" 31 "Utilities" 32 "Communication" 33 "Personal Services" 34 "Bus
+> iness Services" 35 "Computer Hardware" 36 "Computer Software" 37 "Electronic Equipment" 38 "Me
+> asuring and Control Equipment" 39 "Business Supplies" 40 "Shipping Containers" 41 "Transportat
+> ion" 42 "Wholesale" 43 "Retail" 44 "Restaraunts, Hotels, Motels" 45 "Banking" 46 "Insurance" 4
+> 7 "Real Estate" 48 "Trading" 49 "Almost Nothing"
+211.                 label values `newvar' `newvar'
+212. 
+.                 qui replace `newvar'=1 if inrange(``ffind'',100,199) | inrange(``ffind'',200,2
+> 99) | inrange(``ffind'',700,799) | inrange(``ffind'',910,919) | inrange(``ffind'',2048,2048)
+213.                 qui replace `newvar'=2 if inrange(``ffind'',2000,2009) | inrange(``ffind'',
+> 2010,2019) | inrange(``ffind'',2020,2029) | inrange(``ffind'',2030,2039) | inrange(``ffind'',2
+> 040,2046) | inrange(``ffind'',2050,2059) | inrange(``ffind'',2060,2063) | inrange(``ffind'',20
+> 70,2079) | inrange(``ffind'',2090,2092) | inrange(``ffind'',2095,2095) | inrange(``ffind'',209
+> 8,2099)
+214.                 qui replace `newvar'=3 if inrange(``ffind'',2064,2068) | inrange(``ffind'',
+> 2086,2086) | inrange(``ffind'',2087,2087) | inrange(``ffind'',2096,2096) | inrange(``ffind'',2
+> 097,2097)
+215.                 qui replace `newvar'=4 if inrange(``ffind'',2080,2080) | inrange(``ffind'',
+> 2082,2082) | inrange(``ffind'',2083,2083) | inrange(``ffind'',2084,2084) | inrange(``ffind'',2
+> 085,2085)
+216.                 qui replace `newvar'=5 if inrange(``ffind'',2100,2199)
+217.                 qui replace `newvar'=6 if inrange(``ffind'',920,999) | inrange(``ffind'',36
+> 50,3651) | inrange(``ffind'',3652,3652) | inrange(``ffind'',3732,3732) | inrange(``ffind'',393
+> 0,3931) | inrange(``ffind'',3940,3949)
+218.                 qui replace `newvar'=7 if inrange(``ffind'',7800,7829) | inrange(``ffind'',
+> 7830,7833) | inrange(``ffind'',7840,7841) | inrange(``ffind'',7900,7900) | inrange(``ffind'',7
+> 910,7911) | inrange(``ffind'',7920,7929) | inrange(``ffind'',7930,7933) | inrange(``ffind'',79
+> 40,7949) | inrange(``ffind'',7980,7980) | inrange(``ffind'',7990,7999)
+219.                 qui replace `newvar'=8 if inrange(``ffind'',2700,2709) | inrange(``ffind'',
+> 2710,2719) | inrange(``ffind'',2720,2729) | inrange(``ffind'',2730,2739) | inrange(``ffind'',2
+> 740,2749) | inrange(``ffind'',2770,2771) | inrange(``ffind'',2780,2789) | inrange(``ffind'',27
+> 90,2799)
+220.                 qui replace `newvar'=9 if inrange(``ffind'',2047,2047) | inrange(``ffind'',
+> 2391,2392) | inrange(``ffind'',2510,2519) | inrange(``ffind'',2590,2599) | inrange(``ffind'',2
+> 840,2843) | inrange(``ffind'',2844,2844) | inrange(``ffind'',3160,3161) | inrange(``ffind'',31
+> 70,3171) | inrange(``ffind'',3172,3172) | inrange(``ffind'',3190,3199) | inrange(``ffind'',322
+> 9,3229) | inrange(``ffind'',3260,3260) | inrange(``ffind'',3262,3263) | inrange(``ffind'',3269
+> ,3269) | inrange(``ffind'',3230,3231) | inrange(``ffind'',3630,3639) | inrange(``ffind'',3750,
+> 3751) | inrange(``ffind'',3800,3800) | inrange(``ffind'',3860,3861) | inrange(``ffind'',3870,3
+> 873) | inrange(``ffind'',3910,3911) | inrange(``ffind'',3914,3914) | inrange(``ffind'',3915,39
+> 15) | inrange(``ffind'',3960,3962) | inrange(``ffind'',3991,3991) | inrange(``ffind'',3995,399
+> 5)
+221.                 qui replace `newvar'=10 if inrange(``ffind'',2300,2390) | inrange(``ffind''
+> ,3020,3021) | inrange(``ffind'',3100,3111) | inrange(``ffind'',3130,3131) | inrange(``ffind'',
+> 3140,3149) | inrange(``ffind'',3150,3151) | inrange(``ffind'',3963,3965)
+222.                 qui replace `newvar'=11 if inrange(``ffind'',8000,8099)
+223.                 qui replace `newvar'=12 if inrange(``ffind'',3693,3693) | inrange(``ffind''
+> ,3840,3849) | inrange(``ffind'',3850,3851)
+224.                 qui replace `newvar'=13 if inrange(``ffind'',2830,2830) | inrange(``ffind''
+> ,2831,2831) | inrange(``ffind'',2833,2833) | inrange(``ffind'',2834,2834) | inrange(``ffind'',
+> 2835,2835) | inrange(``ffind'',2836,2836)
+225.                 qui replace `newvar'=14 if inrange(``ffind'',2800,2809) | inrange(``ffind''
+> ,2810,2819) | inrange(``ffind'',2820,2829) | inrange(``ffind'',2850,2859) | inrange(``ffind'',
+> 2860,2869) | inrange(``ffind'',2870,2879) | inrange(``ffind'',2890,2899)
+226.                 qui replace `newvar'=15 if inrange(``ffind'',3031,3031) | inrange(``ffind''
+> ,3041,3041) | inrange(``ffind'',3050,3053) | inrange(``ffind'',3060,3069) | inrange(``ffind'',
+> 3070,3079) | inrange(``ffind'',3080,3089) | inrange(``ffind'',3090,3099)
+227.                 qui replace `newvar'=16 if inrange(``ffind'',2200,2269) | inrange(``ffind''
+> ,2270,2279) | inrange(``ffind'',2280,2284) | inrange(``ffind'',2290,2295) | inrange(``ffind'',
+> 2297,2297) | inrange(``ffind'',2298,2298) | inrange(``ffind'',2299,2299) | inrange(``ffind'',2
+> 393,2395) | inrange(``ffind'',2397,2399)
+228.                 qui replace `newvar'=17 if inrange(``ffind'',800,899) | inrange(``ffind'',2
+> 400,2439) | inrange(``ffind'',2450,2459) | inrange(``ffind'',2490,2499) | inrange(``ffind'',26
+> 60,2661) | inrange(``ffind'',2950,2952) | inrange(``ffind'',3200,3200) | inrange(``ffind'',321
+> 0,3211) | inrange(``ffind'',3240,3241) | inrange(``ffind'',3250,3259) | inrange(``ffind'',3261
+> ,3261) | inrange(``ffind'',3264,3264) | inrange(``ffind'',3270,3275) | inrange(``ffind'',3280,
+> 3281) | inrange(``ffind'',3290,3293) | inrange(``ffind'',3295,3299) | inrange(``ffind'',3420,3
+> 429) | inrange(``ffind'',3430,3433) | inrange(``ffind'',3440,3441) | inrange(``ffind'',3442,34
+> 42) | inrange(``ffind'',3446,3446) | inrange(``ffind'',3448,3448) | inrange(``ffind'',3449,344
+> 9) | inrange(``ffind'',3450,3451) | inrange(``ffind'',3452,3452) | inrange(``ffind'',3490,3499
+> ) | inrange(``ffind'',3996,3996)
+229.                 qui replace `newvar'=18 if inrange(``ffind'',1500,1511) | inrange(``ffind''
+> ,1520,1529) | inrange(``ffind'',1530,1539) | inrange(``ffind'',1540,1549) | inrange(``ffind'',
+> 1600,1699) | inrange(``ffind'',1700,1799)
+230.                 qui replace `newvar'=19 if inrange(``ffind'',3300,3300) | inrange(``ffind''
+> ,3310,3317) | inrange(``ffind'',3320,3325) | inrange(``ffind'',3330,3339) | inrange(``ffind'',
+> 3340,3341) | inrange(``ffind'',3350,3357) | inrange(``ffind'',3360,3369) | inrange(``ffind'',3
+> 370,3379) | inrange(``ffind'',3390,3399)
+231.                 qui replace `newvar'=20 if inrange(``ffind'',3400,3400) | inrange(``ffind''
+> ,3443,3443) | inrange(``ffind'',3444,3444) | inrange(``ffind'',3460,3469) | inrange(``ffind'',
+> 3470,3479)
+232.                 qui replace `newvar'=21 if inrange(``ffind'',3510,3519) | inrange(``ffind''
+> ,3520,3529) | inrange(``ffind'',3530,3530) | inrange(``ffind'',3531,3531) | inrange(``ffind'',
+> 3532,3532) | inrange(``ffind'',3533,3533) | inrange(``ffind'',3534,3534) | inrange(``ffind'',3
+> 535,3535) | inrange(``ffind'',3536,3536) | inrange(``ffind'',3538,3538) | inrange(``ffind'',35
+> 40,3549) | inrange(``ffind'',3550,3559) | inrange(``ffind'',3560,3569) | inrange(``ffind'',358
+> 0,3580) | inrange(``ffind'',3581,3581) | inrange(``ffind'',3582,3582) | inrange(``ffind'',3585
+> ,3585) | inrange(``ffind'',3586,3586) | inrange(``ffind'',3589,3589) | inrange(``ffind'',3590,
+> 3599)
+233.                 qui replace `newvar'=22 if inrange(``ffind'',3600,3600) | inrange(``ffind''
+> ,3610,3613) | inrange(``ffind'',3620,3621) | inrange(``ffind'',3623,3629) | inrange(``ffind'',
+> 3640,3644) | inrange(``ffind'',3645,3645) | inrange(``ffind'',3646,3646) | inrange(``ffind'',3
+> 648,3649) | inrange(``ffind'',3660,3660) | inrange(``ffind'',3690,3690) | inrange(``ffind'',36
+> 91,3692) | inrange(``ffind'',3699,3699)
+234.                 qui replace `newvar'=23 if inrange(``ffind'',2296,2296) | inrange(``ffind''
+> ,2396,2396) | inrange(``ffind'',3010,3011) | inrange(``ffind'',3537,3537) | inrange(``ffind'',
+> 3647,3647) | inrange(``ffind'',3694,3694) | inrange(``ffind'',3700,3700) | inrange(``ffind'',3
+> 710,3710) | inrange(``ffind'',3711,3711) | inrange(``ffind'',3713,3713) | inrange(``ffind'',37
+> 14,3714) | inrange(``ffind'',3715,3715) | inrange(``ffind'',3716,3716) | inrange(``ffind'',379
+> 2,3792) | inrange(``ffind'',3790,3791) | inrange(``ffind'',3799,3799)
+235.                 qui replace `newvar'=24 if inrange(``ffind'',3720,3720) | inrange(``ffind''
+> ,3721,3721) | inrange(``ffind'',3723,3724) | inrange(``ffind'',3725,3725) | inrange(``ffind'',
+> 3728,3729)
+236.                 qui replace `newvar'=25 if inrange(``ffind'',3730,3731) | inrange(``ffind''
+> ,3740,3743)
+237.                 qui replace `newvar'=26 if inrange(``ffind'',3760,3769) | inrange(``ffind''
+> ,3795,3795) | inrange(``ffind'',3480,3489)
+238.                 qui replace `newvar'=27 if inrange(``ffind'',1040,1049)
+239.                 qui replace `newvar'=28 if inrange(``ffind'',1000,1009) | inrange(``ffind''
+> ,1010,1019) | inrange(``ffind'',1020,1029) | inrange(``ffind'',1030,1039) | inrange(``ffind'',
+> 1050,1059) | inrange(``ffind'',1060,1069) | inrange(``ffind'',1070,1079) | inrange(``ffind'',1
+> 080,1089) | inrange(``ffind'',1090,1099) | inrange(``ffind'',1100,1119) | inrange(``ffind'',14
+> 00,1499)
+240.                 qui replace `newvar'=29 if inrange(``ffind'',1200,1299)
+241.                 qui replace `newvar'=30 if inrange(``ffind'',1300,1300) | inrange(``ffind''
+> ,1310,1319) | inrange(``ffind'',1320,1329) | inrange(``ffind'',1330,1339) | inrange(``ffind'',
+> 1370,1379) | inrange(``ffind'',1380,1380) | inrange(``ffind'',1381,1381) | inrange(``ffind'',1
+> 382,1382) | inrange(``ffind'',1389,1389) | inrange(``ffind'',2900,2912) | inrange(``ffind'',29
+> 90,2999)
+242.                 qui replace `newvar'=31 if inrange(``ffind'',4900,4900) | inrange(``ffind''
+> ,4910,4911) | inrange(``ffind'',4920,4922) | inrange(``ffind'',4923,4923) | inrange(``ffind'',
+> 4924,4925) | inrange(``ffind'',4930,4931) | inrange(``ffind'',4932,4932) | inrange(``ffind'',4
+> 939,4939) | inrange(``ffind'',4940,4942)
+243.                 qui replace `newvar'=32 if inrange(``ffind'',4800,4800) | inrange(``ffind''
+> ,4810,4813) | inrange(``ffind'',4820,4822) | inrange(``ffind'',4830,4839) | inrange(``ffind'',
+> 4840,4841) | inrange(``ffind'',4880,4889) | inrange(``ffind'',4890,4890) | inrange(``ffind'',4
+> 891,4891) | inrange(``ffind'',4892,4892) | inrange(``ffind'',4899,4899)
+244.                 qui replace `newvar'=33 if inrange(``ffind'',7020,7021) | inrange(``ffind''
+> ,7030,7033) | inrange(``ffind'',7200,7200) | inrange(``ffind'',7210,7212) | inrange(``ffind'',
+> 7214,7214) | inrange(``ffind'',7215,7216) | inrange(``ffind'',7217,7217) | inrange(``ffind'',7
+> 219,7219) | inrange(``ffind'',7220,7221) | inrange(``ffind'',7230,7231) | inrange(``ffind'',72
+> 40,7241) | inrange(``ffind'',7250,7251) | inrange(``ffind'',7260,7269) | inrange(``ffind'',727
+> 0,7290) | inrange(``ffind'',7291,7291) | inrange(``ffind'',7292,7299) | inrange(``ffind'',7395
+> ,7395) | inrange(``ffind'',7500,7500) | inrange(``ffind'',7520,7529) | inrange(``ffind'',7530,
+> 7539) | inrange(``ffind'',7540,7549) | inrange(``ffind'',7600,7600) | inrange(``ffind'',7620,7
+> 620) | inrange(``ffind'',7622,7622) | inrange(``ffind'',7623,7623) | inrange(``ffind'',7629,76
+> 29) | inrange(``ffind'',7630,7631) | inrange(``ffind'',7640,7641) | inrange(``ffind'',7690,769
+> 9) | inrange(``ffind'',8100,8199) | inrange(``ffind'',8200,8299) | inrange(``ffind'',8300,8399
+> ) | inrange(``ffind'',8400,8499) | inrange(``ffind'',8600,8699) | inrange(``ffind'',8800,8899)
+>  | inrange(``ffind'',7510,7515)
+245.                 qui replace `newvar'=34 if inrange(``ffind'',2750,2759) | inrange(``ffind''
+> ,3993,3993) | inrange(``ffind'',7218,7218) | inrange(``ffind'',7300,7300) | inrange(``ffind'',
+> 7310,7319) | inrange(``ffind'',7320,7329) | inrange(``ffind'',7330,7339) | inrange(``ffind'',7
+> 340,7342) | inrange(``ffind'',7349,7349) | inrange(``ffind'',7350,7351) | inrange(``ffind'',73
+> 52,7352) | inrange(``ffind'',7353,7353) | inrange(``ffind'',7359,7359) | inrange(``ffind'',736
+> 0,7369) | inrange(``ffind'',7374,7374) | inrange(``ffind'',7376,7376) | inrange(``ffind'',7377
+> ,7377) | inrange(``ffind'',7378,7378) | inrange(``ffind'',7379,7379) | inrange(``ffind'',7380,
+> 7380) | inrange(``ffind'',7381,7382) | inrange(``ffind'',7383,7383) | inrange(``ffind'',7384,7
+> 384) | inrange(``ffind'',7385,7385) | inrange(``ffind'',7389,7390) | inrange(``ffind'',7391,73
+> 91) | inrange(``ffind'',7392,7392) | inrange(``ffind'',7393,7393) | inrange(``ffind'',7394,739
+> 4) | inrange(``ffind'',7396,7396) | inrange(``ffind'',7397,7397) | inrange(``ffind'',7399,7399
+> ) | inrange(``ffind'',7519,7519) | inrange(``ffind'',8700,8700) | inrange(``ffind'',8710,8713)
+>  | inrange(``ffind'',8720,8721) | inrange(``ffind'',8730,8734) | inrange(``ffind'',8740,8748) 
+> | inrange(``ffind'',8900,8910) | inrange(``ffind'',8911,8911) | inrange(``ffind'',8920,8999) |
+>  inrange(``ffind'',4220,4229)
+246.                 qui replace `newvar'=35 if inrange(``ffind'',3570,3579) | inrange(``ffind''
+> ,3680,3680) | inrange(``ffind'',3681,3681) | inrange(``ffind'',3682,3682) | inrange(``ffind'',
+> 3683,3683) | inrange(``ffind'',3684,3684) | inrange(``ffind'',3685,3685) | inrange(``ffind'',3
+> 686,3686) | inrange(``ffind'',3687,3687) | inrange(``ffind'',3688,3688) | inrange(``ffind'',36
+> 89,3689) | inrange(``ffind'',3695,3695)
+247.                 qui replace `newvar'=36 if inrange(``ffind'',7370,7372) | inrange(``ffind''
+> ,7375,7375) | inrange(``ffind'',7373,7373)
+248.                 qui replace `newvar'=37 if inrange(``ffind'',3622,3622) | inrange(``ffind''
+> ,3661,3661) | inrange(``ffind'',3662,3662) | inrange(``ffind'',3663,3663) | inrange(``ffind'',
+> 3664,3664) | inrange(``ffind'',3665,3665) | inrange(``ffind'',3666,3666) | inrange(``ffind'',3
+> 669,3669) | inrange(``ffind'',3670,3679) | inrange(``ffind'',3810,3810) | inrange(``ffind'',38
+> 12,3812)
+249.                 qui replace `newvar'=38 if inrange(``ffind'',3811,3811) | inrange(``ffind''
+> ,3820,3820) | inrange(``ffind'',3821,3821) | inrange(``ffind'',3822,3822) | inrange(``ffind'',
+> 3823,3823) | inrange(``ffind'',3824,3824) | inrange(``ffind'',3825,3825) | inrange(``ffind'',3
+> 826,3826) | inrange(``ffind'',3827,3827) | inrange(``ffind'',3829,3829) | inrange(``ffind'',38
+> 30,3839)
+250.                 qui replace `newvar'=39 if inrange(``ffind'',2520,2549) | inrange(``ffind''
+> ,2600,2639) | inrange(``ffind'',2670,2699) | inrange(``ffind'',2760,2761) | inrange(``ffind'',
+> 3950,3955)
+251.                 qui replace `newvar'=40 if inrange(``ffind'',2440,2449) | inrange(``ffind''
+> ,2640,2659) | inrange(``ffind'',3220,3221) | inrange(``ffind'',3410,3412)
+252.                 qui replace `newvar'=41 if inrange(``ffind'',4000,4013) | inrange(``ffind''
+> ,4040,4049) | inrange(``ffind'',4100,4100) | inrange(``ffind'',4110,4119) | inrange(``ffind'',
+> 4120,4121) | inrange(``ffind'',4130,4131) | inrange(``ffind'',4140,4142) | inrange(``ffind'',4
+> 150,4151) | inrange(``ffind'',4170,4173) | inrange(``ffind'',4190,4199) | inrange(``ffind'',42
+> 00,4200) | inrange(``ffind'',4210,4219) | inrange(``ffind'',4230,4231) | inrange(``ffind'',424
+> 0,4249) | inrange(``ffind'',4400,4499) | inrange(``ffind'',4500,4599) | inrange(``ffind'',4600
+> ,4699) | inrange(``ffind'',4700,4700) | inrange(``ffind'',4710,4712) | inrange(``ffind'',4720,
+> 4729) | inrange(``ffind'',4730,4739) | inrange(``ffind'',4740,4749) | inrange(``ffind'',4780,4
+> 780) | inrange(``ffind'',4782,4782) | inrange(``ffind'',4783,4783) | inrange(``ffind'',4784,47
+> 84) | inrange(``ffind'',4785,4785) | inrange(``ffind'',4789,4789)
+253.                 qui replace `newvar'=42 if inrange(``ffind'',5000,5000) | inrange(``ffind''
+> ,5010,5015) | inrange(``ffind'',5020,5023) | inrange(``ffind'',5030,5039) | inrange(``ffind'',
+> 5040,5042) | inrange(``ffind'',5043,5043) | inrange(``ffind'',5044,5044) | inrange(``ffind'',5
+> 045,5045) | inrange(``ffind'',5046,5046) | inrange(``ffind'',5047,5047) | inrange(``ffind'',50
+> 48,5048) | inrange(``ffind'',5049,5049) | inrange(``ffind'',5050,5059) | inrange(``ffind'',506
+> 0,5060) | inrange(``ffind'',5063,5063) | inrange(``ffind'',5064,5064) | inrange(``ffind'',5065
+> ,5065) | inrange(``ffind'',5070,5078) | inrange(``ffind'',5080,5080) | inrange(``ffind'',5081,
+> 5081) | inrange(``ffind'',5082,5082) | inrange(``ffind'',5083,5083) | inrange(``ffind'',5084,5
+> 084) | inrange(``ffind'',5085,5085) | inrange(``ffind'',5086,5087) | inrange(``ffind'',5088,50
+> 88) | inrange(``ffind'',5090,5090) | inrange(``ffind'',5091,5092) | inrange(``ffind'',5093,509
+> 3) | inrange(``ffind'',5094,5094) | inrange(``ffind'',5099,5099) | inrange(``ffind'',5100,5100
+> ) | inrange(``ffind'',5110,5113) | inrange(``ffind'',5120,5122) | inrange(``ffind'',5130,5139)
+>  | inrange(``ffind'',5140,5149) | inrange(``ffind'',5150,5159) | inrange(``ffind'',5160,5169) 
+> | inrange(``ffind'',5170,5172) | inrange(``ffind'',5180,5182) | inrange(``ffind'',5190,5199)
+254.                 qui replace `newvar'=43 if inrange(``ffind'',5200,5200) | inrange(``ffind''
+> ,5210,5219) | inrange(``ffind'',5220,5229) | inrange(``ffind'',5230,5231) | inrange(``ffind'',
+> 5250,5251) | inrange(``ffind'',5260,5261) | inrange(``ffind'',5270,5271) | inrange(``ffind'',5
+> 300,5300) | inrange(``ffind'',5310,5311) | inrange(``ffind'',5320,5320) | inrange(``ffind'',53
+> 30,5331) | inrange(``ffind'',5334,5334) | inrange(``ffind'',5340,5349) | inrange(``ffind'',539
+> 0,5399) | inrange(``ffind'',5400,5400) | inrange(``ffind'',5410,5411) | inrange(``ffind'',5412
+> ,5412) | inrange(``ffind'',5420,5429) | inrange(``ffind'',5430,5439) | inrange(``ffind'',5440,
+> 5449) | inrange(``ffind'',5450,5459) | inrange(``ffind'',5460,5469) | inrange(``ffind'',5490,5
+> 499) | inrange(``ffind'',5500,5500) | inrange(``ffind'',5510,5529) | inrange(``ffind'',5530,55
+> 39) | inrange(``ffind'',5540,5549) | inrange(``ffind'',5550,5559) | inrange(``ffind'',5560,556
+> 9) | inrange(``ffind'',5570,5579) | inrange(``ffind'',5590,5599) | inrange(``ffind'',5600,5699
+> ) | inrange(``ffind'',5700,5700) | inrange(``ffind'',5710,5719) | inrange(``ffind'',5720,5722)
+>  | inrange(``ffind'',5730,5733) | inrange(``ffind'',5734,5734) | inrange(``ffind'',5735,5735) 
+> | inrange(``ffind'',5736,5736) | inrange(``ffind'',5750,5799) | inrange(``ffind'',5900,5900) |
+>  inrange(``ffind'',5910,5912) | inrange(``ffind'',5920,5929) | inrange(``ffind'',5930,5932) | 
+> inrange(``ffind'',5940,5940) | inrange(``ffind'',5941,5941) | inrange(``ffind'',5942,5942) | i
+> nrange(``ffind'',5943,5943) | inrange(``ffind'',5944,5944) | inrange(``ffind'',5945,5945) | in
+> range(``ffind'',5946,5946) | inrange(``ffind'',5947,5947) | inrange(``ffind'',5948,5948) | inr
+> ange(``ffind'',5949,5949) | inrange(``ffind'',5950,5959) | inrange(``ffind'',5960,5969) | inra
+> nge(``ffind'',5970,5979) | inrange(``ffind'',5980,5989) | inrange(``ffind'',5990,5990) | inran
+> ge(``ffind'',5992,5992) | inrange(``ffind'',5993,5993) | inrange(``ffind'',5994,5994) | inrang
+> e(``ffind'',5995,5995) | inrange(``ffind'',5999,5999)
+255.                 qui replace `newvar'=44 if inrange(``ffind'',5800,5819) | inrange(``ffind''
+> ,5820,5829) | inrange(``ffind'',5890,5899) | inrange(``ffind'',7000,7000) | inrange(``ffind'',
+> 7010,7019) | inrange(``ffind'',7040,7049) | inrange(``ffind'',7213,7213)
+256.                 qui replace `newvar'=45 if inrange(``ffind'',6000,6000) | inrange(``ffind''
+> ,6010,6019) | inrange(``ffind'',6020,6020) | inrange(``ffind'',6021,6021) | inrange(``ffind'',
+> 6022,6022) | inrange(``ffind'',6023,6024) | inrange(``ffind'',6025,6025) | inrange(``ffind'',6
+> 026,6026) | inrange(``ffind'',6027,6027) | inrange(``ffind'',6028,6029) | inrange(``ffind'',60
+> 30,6036) | inrange(``ffind'',6040,6059) | inrange(``ffind'',6060,6062) | inrange(``ffind'',608
+> 0,6082) | inrange(``ffind'',6090,6099) | inrange(``ffind'',6100,6100) | inrange(``ffind'',6110
+> ,6111) | inrange(``ffind'',6112,6113) | inrange(``ffind'',6120,6129) | inrange(``ffind'',6130,
+> 6139) | inrange(``ffind'',6140,6149) | inrange(``ffind'',6150,6159) | inrange(``ffind'',6160,6
+> 169) | inrange(``ffind'',6170,6179) | inrange(``ffind'',6190,6199)
+257.                 qui replace `newvar'=46 if inrange(``ffind'',6300,6300) | inrange(``ffind''
+> ,6310,6319) | inrange(``ffind'',6320,6329) | inrange(``ffind'',6330,6331) | inrange(``ffind'',
+> 6350,6351) | inrange(``ffind'',6360,6361) | inrange(``ffind'',6370,6379) | inrange(``ffind'',6
+> 390,6399) | inrange(``ffind'',6400,6411)
+258.                 qui replace `newvar'=47 if inrange(``ffind'',6500,6500) | inrange(``ffind''
+> ,6510,6510) | inrange(``ffind'',6512,6512) | inrange(``ffind'',6513,6513) | inrange(``ffind'',
+> 6514,6514) | inrange(``ffind'',6515,6515) | inrange(``ffind'',6517,6519) | inrange(``ffind'',6
+> 520,6529) | inrange(``ffind'',6530,6531) | inrange(``ffind'',6532,6532) | inrange(``ffind'',65
+> 40,6541) | inrange(``ffind'',6550,6553) | inrange(``ffind'',6590,6599) | inrange(``ffind'',661
+> 0,6611)
+259.                 qui replace `newvar'=48 if inrange(``ffind'',6200,6299) | inrange(``ffind''
+> ,6700,6700) | inrange(``ffind'',6710,6719) | inrange(``ffind'',6720,6722) | inrange(``ffind'',
+> 6723,6723) | inrange(``ffind'',6724,6724) | inrange(``ffind'',6725,6725) | inrange(``ffind'',6
+> 726,6726) | inrange(``ffind'',6730,6733) | inrange(``ffind'',6740,6779) | inrange(``ffind'',67
+> 90,6791) | inrange(``ffind'',6792,6792) | inrange(``ffind'',6793,6793) | inrange(``ffind'',679
+> 4,6794) | inrange(``ffind'',6795,6795) | inrange(``ffind'',6798,6798) | inrange(``ffind'',6799
+> ,6799)
+260.                 qui replace `newvar'=49 if missing(`newvar') & ~missing(``ffind'')
+261. 
+.                 }
+262.         else {
+263.                 di as error "Type must be 5, 10, 12, 17, 30, 38, 48 or 49"
+264.                 exit 111
+265.                 }
+266. 
+. 
+. end
+
+. ffind sic, newvar(ffi)   type(49)
+
+. ffind sic, newvar(ffi10) type(10)
+
+. egen industry   = group(ffi)
+
+. egen industry10 = group(ffi10)
+
+. 
+. * Industry -- time fixed-effect codes (used in matching and some regressions)
+. egen itimecode   = group(industry   timecode)
+
+. egen itimecode10 = group(industry10 timecode)
+
+. 
+. 
+. ********************************************************************************
+. * SECTION 2: EVENT DEFINITION -- MOODY'S RULE CHANGE, JULY 31, 2013
+. *
+. * Moody's changed equity credit for preferred stock of speculative-grade firms
+. * from 50% to 100% effective July 31, 2013.  Treated firms are speculative-
+. * grade firms that held preferred stock as of the last quarter before the change.
+. * This section defines the event dummy and the "treatment quarter" identifier.
+. ********************************************************************************
+. 
+. * Post-event dummy (event = 1 for quarters after July 31, 2013)
+. gen event = 1 if year >= 2014
+(261,166 missing values generated)
+
+. replace event = 1 if year == 2013 & month >= 8
+(15,889 real changes made)
+
+. replace event = 0 if missing(event)
+(245,277 real changes made)
+
+. 
+. * treatmentq = 1 for the last pre-event quarter of each firm
+. * (the quarter used to assign treatment intensity and matching variables)
+. egen maxtimecode = max(timecode) if event == 0, by(companycode)
+(91125 missing values generated)
+
+. gen  treatmentq  = 1 if timecode == maxtimecode
+(323,703 missing values generated)
+
+. replace treatmentq = 0 if missing(treatmentq)
+(323,703 real changes made)
+
+. 
+. * Drop firms whose last pre-event quarter is before April 2013
+. * (incomplete pre-treatment window would confound identification)
+. gen include = 0 if treatmentq == 1 & month < 4
+(335,311 missing values generated)
+
+. replace include = 0 if treatmentq == 1 & year < 2013
+(3,234 real changes made)
+
+. egen maxinclude = max(include), by(companycode)
+(281112 missing values generated)
+
+. drop if maxinclude == 0 & !missing(maxinclude)
+(55,290 observations deleted)
+
+. 
+. 
+. ********************************************************************************
+. * SECTION 3: VARIABLE CONSTRUCTION -- LEVERAGE, DEBT, AND PREFERRED STOCK
+. ********************************************************************************
+. 
+. *---- 3a. Debt and leverage ------------------------------------------------------------------
+> ------------------------------------------
+. 
+. gen me  = prccq * cshoq          // market equity ($M)
+(69,227 missing values generated)
+
+. gen me2 = me / 1000              // market equity ($B)
+(69,227 missing values generated)
+
+. 
+. replace dlttq = 0 if dlttq == .
+(77,582 real changes made)
+
+. replace dlcq  = 0 if dlcq  == .
+(88,111 real changes made)
+
+. egen td = rowtotal(dlcq dlttq)   // total debt
+
+. 
+. gen cash        = cheq / atq
+(77,338 missing values generated)
+
+. gen logdebt     = log(td)
+(112,096 missing values generated)
+
+. gen marketcap   = log(me)
+(69,228 missing values generated)
+
+. gen logcash     = log(cheq)
+(79,817 missing values generated)
+
+. gen logltdebt   = log(dlttq)
+(131,368 missing values generated)
+
+. gen logstdebt   = log(dlcq)
+(146,293 missing values generated)
+
+. gen loglt1debt  = log(1 + dlttq)
+
+. gen logst1debt  = log(1 + dlcq)
+
+. gen log1debt    = log(1 + td)
+
+. gen log1cash    = log(1 + cheq)
+(76,368 missing values generated)
+
+. 
+. * Debt maturity: share of debt that is long-term
+. gen maturity   = dlttq / (dlttq + dlcq)
+(112,095 missing values generated)
+
+. gen maturity_1 = max(maturity, 0)
+
+. replace maturity_1 = min(maturity_1, 1)
+(0 real changes made)
+
+. gen maturity0  = maturity_1 if treatmentq == 1
+(272,738 missing values generated)
+
+. egen mmaturity0 = max(maturity0), by(gvkey)
+(5393 missing values generated)
+
+. replace maturity0 = mmaturity0
+(267,345 real changes made)
+
+. drop mmaturity0
+
+. 
+. replace dd1q = 0 if missing(dd1q)
+(206,091 real changes made)
+
+. gen maturity2   = dd1q / (dlttq + dlcq)
+(112,095 missing values generated)
+
+. gen maturity2_1 = max(maturity2, 0)
+
+. replace maturity2_1 = min(maturity2_1, 1)
+(3 real changes made)
+
+. gen maturity20  = maturity2_1 if treatmentq == 1
+(272,738 missing values generated)
+
+. egen mmaturity20 = max(maturity20), by(gvkey)
+(5393 missing values generated)
+
+. replace maturity20 = mmaturity20
+(267,345 real changes made)
+
+. drop mmaturity20
+
+. 
+. gen logdiv = log(dvy)
+(198,655 missing values generated)
+
+. 
+. * Liabilities over assets
+. gen la = ltq / atq
+(77,169 missing values generated)
+
+. 
+. * Book equity: use teqq if seqq is missing
+. replace seqq = teqq if missing(seqq)
+(3 real changes made)
+
+. 
+. * Leverage ratios
+. gen bl  = td / (td + seqq)       // book leverage
+(76,423 missing values generated)
+
+. gen bla = td / atq               // debt-to-assets
+(76,597 missing values generated)
+
+. gen ml  = td / (td + me)         // market leverage
+(69,227 missing values generated)
+
+. gen ev  = seqq + td              // book enterprise value
+(76,315 missing values generated)
+
+. 
+. * Debt-to-EBITDA (Begley, trailing 4 quarters)
+. sort companycode yearquarter
+
+. by companycode: gen debtebitda = td / (oibdpq + oibdpq[_n-1] + oibdpq[_n-2] + oibdpq[_n-3])
+(108,269 missing values generated)
+
+. 
+. *---- 3b. Convert year-to-date flow variables to quarterly flows -----------------------------
+> -----
+. * These Compustat items are reported on a fiscal-year-to-date basis; we
+. * subtract the prior quarter's YTD value to recover the quarterly flow.
+. 
+. sort companycode fyearq fqtr timecode
+
+. 
+. foreach x in dltisy dltry capxy sivy sppey aqcy sstky prstkcy dlcchy {
+  2.     replace `x' = 0 if `x' == .
+  3.     gen `x'q = `x' if fqtr == 1
+  4.     by companycode fyearq: replace `x'q = `x' - `x'[_n-1] if fqtr >= 2 & fqtr - fqtr[_n-1] 
+> == 1
+  5.     replace `x' = `x'q
+  6.     drop `x'q
+  7. }
+(85,588 real changes made)
+(207,457 missing values generated)
+(204611 real changes made)
+(79,106 real changes made, 2,846 to missing)
+(83,503 real changes made)
+(207,457 missing values generated)
+(204611 real changes made)
+(124,800 real changes made, 2,846 to missing)
+(79,937 real changes made)
+(207,457 missing values generated)
+(204611 real changes made)
+(174,079 real changes made, 2,846 to missing)
+(85,446 real changes made)
+(207,457 missing values generated)
+(204611 real changes made)
+(69,450 real changes made, 2,846 to missing)
+(113,753 real changes made)
+(207,457 missing values generated)
+(204611 real changes made)
+(46,042 real changes made, 2,846 to missing)
+(83,173 real changes made)
+(207,457 missing values generated)
+(204611 real changes made)
+(45,497 real changes made, 2,846 to missing)
+(82,087 real changes made)
+(207,457 missing values generated)
+(204611 real changes made)
+(127,838 real changes made, 2,846 to missing)
+(89,793 real changes made)
+(207,457 missing values generated)
+(204611 real changes made)
+(67,186 real changes made, 2,846 to missing)
+(162,501 real changes made)
+(207,457 missing values generated)
+(204611 real changes made)
+(64,306 real changes made, 2,846 to missing)
+
+. 
+. * Set flow variables to missing for duplicate fiscal-year quarters
+. * (rare but possible when a firm changes its fiscal year)
+. duplicates tag companycode fyearq fqtr, gen(dup1)
+
+Duplicates in terms of companycode fyearq fqtr
+
+. bys companycode fyearq fqtr (datadate): gen dup2 = 1 if dup1 == 1 & _n == 1
+(280,994 missing values generated)
+
+. foreach x in dltisy dltry capxy sivy sppey aqcy sstky prstkcy dlcchy {
+  2.     replace `x' = . if dup2 == 1
+  3. }
+(117 real changes made, 117 to missing)
+(117 real changes made, 117 to missing)
+(117 real changes made, 117 to missing)
+(117 real changes made, 117 to missing)
+(117 real changes made, 117 to missing)
+(117 real changes made, 117 to missing)
+(117 real changes made, 117 to missing)
+(117 real changes made, 117 to missing)
+(117 real changes made, 117 to missing)
+
+. drop dup1 dup2
+
+. 
+. *---- 3c. Debt issuance and buybacks ---------------------------------------------------------
+> ---------------------------------
+. 
+. sort companycode yearquarter
+
+. 
+. by companycode: gen deltaltd       = dlttq - dlttq[_n-1]
+(9,244 missing values generated)
+
+. by companycode: gen deltatotald    = dlttq + dlcq - (dlttq[_n-1] + dlcq[_n-1])
+(9,244 missing values generated)
+
+. by companycode: gen deltaltda      = (dlttq - dlttq[_n-1]) / atq[_n-1]
+(83,168 missing values generated)
+
+. by companycode: gen netissuance    = dltisy - dltry
+(2,963 missing values generated)
+
+. by companycode: gen netissuancetotal = dltisy - dltry + dlcchy
+(2,963 missing values generated)
+
+. by companycode: gen deltatotald2   = dlttq + dlcq - (dlttq[_n-1] + dlcq[_n-1]) if fqtr - fqtr[
+> _n-1] == 1
+(76,477 missing values generated)
+
+. by companycode: gen deltaltd2      = dlttq - dlttq[_n-1] if fqtr - fqtr[_n-1] == 1
+(76,477 missing values generated)
+
+. gen lognetissuance = log(30691 + netissuance)
+(3,022 missing values generated)
+
+. 
+. *---- 3d. Controls ---------------------------------------------------------------------------
+> ---------------------------------------------------
+. 
+. gen prof  = oiadpq / atq          // profitability
+(81,128 missing values generated)
+
+. gen tang  = ppentq / atq          // tangibility
+(85,130 missing values generated)
+
+. gen size  = log(atq)              // log assets
+(76,601 missing values generated)
+
+. gen ppe   = log(ppentq)           // log PP&E
+(96,055 missing values generated)
+
+. gen sales = log(1 + saleq)        // log sales
+(70,318 missing values generated)
+
+. 
+. gen atqc  = atq / (td + seqq)
+(76,457 missing values generated)
+
+. gen ppec  = ppentq / (td + seqq)
+(84,773 missing values generated)
+
+. 
+. by companycode: gen sga   = xsgaq / atq[_n-1]
+(124,237 missing values generated)
+
+. by companycode: gen capex = capxy / atq[_n-1]
+(83,336 missing values generated)
+
+. by companycode: gen rd    = xrdq  / atq[_n-1]
+(199,804 missing values generated)
+
+. 
+. by companycode: gen netltdissuance  = (dltisy - dltry) / atq[_n-1]
+(83,336 missing values generated)
+
+. by companycode: gen netltdev        = (dltisy - dltry) / (seqq[_n-1] + td[_n-1])
+(83,117 missing values generated)
+
+. by companycode: gen ltdebtissuance  = dltisy / atq[_n-1]
+(83,336 missing values generated)
+
+. by companycode: gen ltdebtbuyback   = dltry  / atq[_n-1]
+(83,336 missing values generated)
+
+. 
+. by companycode: gen logltdebtissuance = log(1 + dltisy)
+(7,796 missing values generated)
+
+. replace logltdebtissuance = 0 if missing(logltdebtissuance)
+(7,796 real changes made)
+
+. by companycode: gen logdebtbuyback  = log(1 + dltry)
+(6,548 missing values generated)
+
+. 
+. gen logcapex     = log(1 + capxy)
+(3,832 missing values generated)
+
+. gen logrd        = log(1 + xrdq)
+(193,211 missing values generated)
+
+. gen logsga       = log(1 + xsgaq)
+(112,507 missing values generated)
+
+. gen logsharerepo = log(1 + prstkcy)
+(3,588 missing values generated)
+
+. gen logequitysale = log(1 + sstky)
+(4,203 missing values generated)
+
+. gen logreturn    = log(1 + prstkcy + dvy)
+(81,822 missing values generated)
+
+. gen logseqq      = log(seqq)
+(98,679 missing values generated)
+
+. 
+. by companycode: gen debtissuancedummy = 1 if dltisy > 0
+(209,024 missing values generated)
+
+. by companycode: replace debtissuancedummy = 0 if missing(debtissuancedummy)
+(209024 real changes made)
+
+. 
+. by companycode: gen ndebtissuancedummy = 1 if dltisy - dltry > 0
+(230,355 missing values generated)
+
+. by companycode: replace ndebtissuancedummy = 0 if missing(ndebtissuancedummy)
+(230355 real changes made)
+
+. 
+. by companycode: gen debtincrease = 1 if td - td[_n-1] > 0
+(193,705 missing values generated)
+
+. replace debtincrease = 0 if missing(debtincrease)
+(193,705 real changes made)
+
+. 
+. *---- 3e. Preferred stock --------------------------------------------------------------------
+> --------------------------------------------
+. 
+. gen pref = pstkq
+(76,630 missing values generated)
+
+. replace pref = 0 if missing(pref)
+(76,630 real changes made)
+
+. replace pref = 0 if pref < 0
+(148 real changes made)
+
+. 
+. gen prefev   = pref / (td + seqq)
+(76,423 missing values generated)
+
+. gen prefev_1 = min(prefev, 1)
+
+. replace prefev_1 = max(prefev_1, 0)
+(2,453 real changes made)
+
+. gen prefevpp = prefev_1 * 100
+
+. 
+. gen prefat   = pref / atq
+(76,597 missing values generated)
+
+. gen preftd   = pref / td
+(112,095 missing values generated)
+
+. gen preftd2  = pref / (td + pref)
+(109,076 missing values generated)
+
+. gen logpref  = log(1 + pref)
+
+. 
+. by companycode: gen prefissue = 1 if pref - pref[_n-1] > 0
+(263,191 missing values generated)
+
+. replace prefissue = 0 if missing(prefissue)
+(263,191 real changes made)
+
+. 
+. *---- 3f. Market-to-book ---------------------------------------------------------------------
+> -------------------------------------------
+. 
+. replace txditcq = 0 if missing(txditcq)
+(113,175 real changes made)
+
+. replace pstkq   = 0 if missing(pstkq)
+(76,630 real changes made)
+
+. replace dlcq    = 0 if missing(dlcq)
+(0 real changes made)
+
+. replace dlttq   = 0 if missing(dlcq)
+(0 real changes made)
+
+. 
+. gen mk2bk  = (me + dlcq + dlttq + pstkq + txditcq) / atq
+(93,905 missing values generated)
+
+. gen mk2bk2 = (me + atq - seqq) / atq
+(94,296 missing values generated)
+
+. 
+. *---- 3g. Treatment assignment ---------------------------------------------------------------
+> -------------------------------------
+. 
+. * preferred = 1 if firm holds any preferred stock
+. gen preferred = 1 if pref > 0
+(250,542 missing values generated)
+
+. replace preferred = 0 if missing(preferred)
+(250,542 real changes made)
+
+. 
+. * treatment = 1 if firm ever had preferred stock (across all periods)
+. gen treatment = 1 if preferred == 1 & treatmentq == 1
+(280,233 missing values generated)
+
+. replace treatment = 0 if preferred == 0 & treatmentq == 1
+(7,495 real changes made)
+
+. egen maxtreatment = max(treatment), by(companycode)
+(5393 missing values generated)
+
+. replace treatment = maxtreatment
+(267,345 real changes made)
+
+. drop maxtreatment
+
+. 
+. *---- 3h. Sample windows ---------------------------------------------------------------------
+> -------------------------------------------
+. 
+. * Short sample: 2012Q3--2015Q2 (used in main regressions)
+. gen sample = 1 if datacyr == 2012 & datacq >= 3
+(265,350 missing values generated)
+
+. replace sample = 1 if datacyr == 2013
+(33,168 real changes made)
+
+. replace sample = 1 if datacyr == 2014
+(32,470 real changes made)
+
+. replace sample = 1 if datacyr == 2015 & datacq <= 2
+(15,621 real changes made)
+
+. 
+. * Medium sample: 2011Q3--2015Q2 (used in time-series figures)
+. gen longsample = 1 if datacyr == 2011 & datacq >= 3
+(266,878 missing values generated)
+
+. replace longsample = 1 if datacyr == 2012
+(31,264 real changes made)
+
+. replace longsample = 1 if datacyr == 2013
+(33,168 real changes made)
+
+. replace longsample = 1 if datacyr == 2014
+(32,470 real changes made)
+
+. replace longsample = 1 if datacyr == 2015 & datacq <= 2
+(15,621 real changes made)
+
+. 
+. 
+. ********************************************************************************
+. * SECTION 4: DATA MERGES
+. *
+. * Merges in: CRSP equity returns, hand-collected preferred stock type
+. * classifications, convertible debt data, CDS spreads, and Thomson Eikon ratings.
+. ********************************************************************************
+. 
+. gen issuer_cusip  = substr(cusip, 1, 6)
+(386 missing values generated)
+
+. gen sixdigitcusip = issuer_cusip
+(386 missing values generated)
+
+. gen cusip8        = substr(cusip, 1, 8)
+(386 missing values generated)
+
+. 
+. * CRSP 2-year equity returns (matched on cusip, then on ticker for gaps)
+. merge m:1 cusip month year using "$crsp/Two year return_v1.dta"
+
+    Result                           # of obs.
+    -----------------------------------------
+    not matched                       656,070
+        from master                   117,702  (_merge==1)
+        from using                    538,368  (_merge==2)
+
+    matched                           163,410  (_merge==3)
+    -----------------------------------------
+
+. drop if _merge == 2
+(538,368 observations deleted)
+
+. drop _merge
+
+. 
+. merge m:1 tic month year using "$crsp/Two year return_v1 Tic.dta"
+
+    Result                           # of obs.
+    -----------------------------------------
+    not matched                       281,248
+        from master                   281,042  (_merge==1)
+        from using                        206  (_merge==2)
+
+    matched                                70  (_merge==3)
+    -----------------------------------------
+
+. drop if _merge == 2
+(206 observations deleted)
+
+. drop _merge
+
+. replace yearret = yearrettic if missing(yearret)
+(40 real changes made)
+
+. 
+. * Hand-collected preferred stock classification
+. * (distinguishes mandatory convertible, trust preferred, pure equity, etc.)
+. merge m:1 cusip using "$manual/Preferred Manual_v1.dta"
+
+    Result                           # of obs.
+    -----------------------------------------
+    not matched                       278,913
+        from master                   278,913  (_merge==1)
+        from using                          0  (_merge==2)
+
+    matched                             2,199  (_merge==3)
+    -----------------------------------------
+
+. drop _merge
+
+. 
+. * Additional foreign-incorporated preferred stock (hand-collected)
+. merge m:1 cusip using "$manual/Preferred Manual Foreign_v1.dta", update
+
+    Result                           # of obs.
+    -----------------------------------------
+    not matched                       281,117
+        from master                   281,112  (_merge==1)
+        from using                          5  (_merge==2)
+
+    matched                                 0
+        not updated                         0  (_merge==3)
+        missing updated                     0  (_merge==4)
+        nonmissing conflict                 0  (_merge==5)
+    -----------------------------------------
+
+. drop if _merge == 2
+(5 observations deleted)
+
+. drop _merge
+
+. 
+. * Convertible debt outstanding at time of rule change
+. merge m:1 gvkey using "$manual/Convert_v2.dta"
+(note: variable gvkey was str6, now str24 to accommodate using data's values)
+
+    Result                           # of obs.
+    -----------------------------------------
+    not matched                        17,851
+        from master                    12,521  (_merge==1)
+        from using                      5,330  (_merge==2)
+
+    matched                           268,591  (_merge==3)
+    -----------------------------------------
+
+. drop if _merge == 2
+(5,330 observations deleted)
+
+. drop _merge
+
+. 
+. * Markit CDS spreads (monthly)
+. merge m:1 sixdigitcusip year month using "$cds/CDS Monthly.dta"
+
+    Result                           # of obs.
+    -----------------------------------------
+    not matched                       302,447
+        from master                   279,239  (_merge==1)
+        from using                     23,208  (_merge==2)
+
+    matched                             1,873  (_merge==3)
+    -----------------------------------------
+
+. drop if _merge == 2
+(23,208 observations deleted)
+
+. drop _merge
+
+. 
+. * Post and Vanguard Natural Resources: hand-identified from FISD
+. * (preferred stock not captured by Compustat pstkq)
+. replace treatment = 1 if gvkey == "170527"
+(26 real changes made)
+
+. replace newpref   = 240 if gvkey == "170527"
+(26 real changes made)
+
+. replace convertiblepreferred = 1 if gvkey == "170527"
+(26 real changes made)
+
+. replace treatment = 1 if gvkey == "178684"
+(42 real changes made)
+
+. replace newpref   = 63  if gvkey == "178684"
+(42 real changes made)
+
+. 
+. * Preferred stock as share of book enterprise value
+. gen prefqnorm = newpref / (td + seqq)
+(279,163 missing values generated)
+
+. replace prefqnorm = 0 if missing(prefqnorm)
+(279,163 real changes made)
+
+. 
+. * Fill missing indicators from hand-collected preferred classification
+. foreach x of varlist onlymando convertiblepreferred juniordebt pureequity defaulted trustprefe
+> rred nothing {
+  2.     replace `x' = 0 if missing(`x')
+  3. }
+(280,928 real changes made)
+(280,138 real changes made)
+(281,075 real changes made)
+(281,070 real changes made)
+(280,913 real changes made)
+(281,070 real changes made)
+(280,944 real changes made)
+
+. 
+. * Remove from treatment firms whose preferred is not affected by Moody's rule change:
+. *   mandatory convertible (converts to equity automatically -> already equity)
+. *   pureequity / juniordebt / trustpreferred / nothing (no equity credit adjustment)
+. replace treatment = 0 if onlymando    == 1
+(184 real changes made)
+
+. replace treatment = 0 if nothing      == 1
+(168 real changes made)
+
+. replace treatment = 0 if pureequity   == 1
+(42 real changes made)
+
+. replace treatment = 0 if juniordebt   == 1
+(37 real changes made)
+
+. replace treatment = 0 if trustpreferred == 1
+(42 real changes made)
+
+. 
+. * Thomson Eikon ratings (Moody's and S&P, quarterly)
+. merge 1:1 year month gvkey using "$eikon/Thomson Eikon_v2.dta"
+(note: variable datadate was long, now double to accommodate using data's values)
+
+    Result                           # of obs.
+    -----------------------------------------
+    not matched                       386,376
+        from master                   243,070  (_merge==1)
+        from using                    143,306  (_merge==2)
+
+    matched                            38,042  (_merge==3)
+    -----------------------------------------
+
+. drop if _merge == 2
+(143,306 observations deleted)
+
+. drop _merge
+
+. 
+. * Drop Eikon outlook variables that were miscoded (not used in paper)
+. drop Moodynegoutlook - Moodyruroutlook
+
+. 
+. * Construct outlook/watch indicator variables
+. gen Snegoutlook   = 1 if SPoutlook   == "NEGATIVE"
+(275,886 missing values generated)
+
+. gen Sposoutlook   = 1 if SPoutlook   == "POSITIVE"
+(278,227 missing values generated)
+
+. gen Sstableoutlook = 1 if SPoutlook  == "STABLE"
+(253,057 missing values generated)
+
+. gen Mnegoutlook   = 1 if Moodyoutlook == "NEG"
+(280,972 missing values generated)
+
+. gen Mposoutlook   = 1 if Moodyoutlook == "POS"
+(281,045 missing values generated)
+
+. gen Mstableoutlook = 1 if Moodyoutlook == "STA"
+(280,455 missing values generated)
+
+. gen Mdevoutlook   = 1 if Moodyoutlook == "DEV"
+(281,112 missing values generated)
+
+. gen Mruroutlook   = 1 if Moodyoutlook == "RUR"
+(281,065 missing values generated)
+
+. 
+. gen Snegwatch  = 1 if SPwatch    == "NEG"
+(269,810 missing values generated)
+
+. gen Sposwatch  = 1 if SPwatch    == "POS"
+(276,746 missing values generated)
+
+. gen Sdevwatch  = 1 if SPwatch    == "DEV"
+(280,540 missing values generated)
+
+. gen Mnegwatch  = 1 if Moodywatch == "DNG"
+(274,888 missing values generated)
+
+. gen Mposwatch  = 1 if Moodywatch == "UPG"
+(278,283 missing values generated)
+
+. gen Muncwatch  = 1 if Moodywatch == "UNC"
+(280,932 missing values generated)
+
+. 
+. drop Ric - numrating
+
+. 
+. foreach x of varlist Snegoutlook - Muncwatch {
+  2.     replace `x' = 0 if missing(`x')
+  3. }
+(275,886 real changes made)
+(278,227 real changes made)
+(253,057 real changes made)
+(280,972 real changes made)
+(281,045 real changes made)
+(280,455 real changes made)
+(281,112 real changes made)
+(281,065 real changes made)
+(269,810 real changes made)
+(276,746 real changes made)
+(280,540 real changes made)
+(274,888 real changes made)
+(278,283 real changes made)
+(280,932 real changes made)
+
+. 
+. * S&P negative/positive signals (watch or outlook)
+. gen spneg = 1 if Snegwatch == 1
+(269,810 missing values generated)
+
+. replace spneg = 1 if Snegoutlook == 1
+(2,563 real changes made)
+
+. replace spneg = 0 if missing(spneg) & !missing(SP)
+(22,559 real changes made)
+
+. 
+. gen spneg2 = 1 if Snegwatch == 1
+(269,810 missing values generated)
+
+. replace spneg2 = 0 if Snegwatch == 0 & !missing(SP)
+(25,066 real changes made)
+
+. 
+. gen spneg3 = 1 if Snegoutlook == 1
+(275,886 missing values generated)
+
+. replace spneg3 = 0 if Snegoutlook == 0 & !missing(SP)
+(31,168 real changes made)
+
+. 
+. gen mneg = 1 if Mnegoutlook == 1
+(280,972 missing values generated)
+
+. replace mneg = 1 if Mnegwatch == 1
+(6,132 real changes made)
+
+. replace mneg = 0 if missing(mneg) & !missing(M)
+(22,456 real changes made)
+
+. 
+. gen sppos = 1 if Sposwatch == 1
+(276,746 missing values generated)
+
+. replace sppos = 1 if Sposoutlook == 1
+(2,451 real changes made)
+
+. replace sppos = 0 if missing(sppos) & !missing(SP)
+(29,521 real changes made)
+
+. 
+. gen mpos = 1 if Mposoutlook == 1
+(281,045 missing values generated)
+
+. replace mpos = 1 if Mposwatch == 1
+(2,813 real changes made)
+
+. replace mpos = 0 if missing(mpos)
+(278,232 real changes made)
+
+. 
+. gen sprated = 1 if !missing(SP)
+(244,809 missing values generated)
+
+. replace sprated = 0 if missing(SP)
+(244,809 real changes made)
+
+. 
+. gen mrated = 1 if !missing(M)
+(252,627 missing values generated)
+
+. replace mrated = 0 if missing(M)
+(252,627 real changes made)
+
+. 
+. * Granular rating: adjust by +/-0.5 notch for watch/outlook
+. gen Mgranular = M
+(252,627 missing values generated)
+
+. replace Mgranular = M - 1/2 if Mnegwatch == 1 | Mnegoutlook == 1
+(6,029 real changes made)
+
+. replace Mgranular = M + 1/2 if Mposwatch == 1 | Mposoutlook == 1
+(2,655 real changes made)
+
+. 
+. gen Sgranular = SP
+(244,809 missing values generated)
+
+. replace Sgranular = SP - 1/2 if Snegwatch == 1 | Snegoutlook == 1
+(13,744 real changes made)
+
+. replace Sgranular = SP + 1/2 if Sposwatch == 1 | Sposoutlook == 1
+(6,782 real changes made)
+
+. 
+. gen Mgranular2 = 0
+
+. replace Mgranular2 =  1 if Mposwatch == 1 | Mposoutlook == 1
+(2,880 real changes made)
+
+. replace Mgranular2 = -1 if Mnegwatch == 1 | Mnegoutlook == 1
+(6,272 real changes made)
+
+. 
+. gen Sgranular2 = 0
+
+. replace Sgranular2 =  1 if Sposwatch == 1 | Sposoutlook == 1
+(6,817 real changes made)
+
+. replace Sgranular2 = -1 if Snegwatch == 1 | Snegoutlook == 1
+(13,865 real changes made)
+
+. 
+. gen Sgranular3 = .
+(281,112 missing values generated)
+
+. replace Sgranular3 =  1 if Sposwatch == 1 | Sposoutlook == 1
+(6,817 real changes made)
+
+. replace Sgranular3 = -1 if Snegwatch == 1 | Snegoutlook == 1
+(13,865 real changes made)
+
+. 
+. * Fill rating at treatment quarter forward/backward for all periods
+. * (Eikon coverage is incomplete outside the sample window)
+. foreach x of varlist SJuly MJuly {
+  2.     egen max`x' = max(`x'), by(gvkey)
+  3.     replace `x' = max`x'
+  4.     drop max`x'
+  5. }
+(235005 missing values generated)
+(12,246 real changes made)
+(240969 missing values generated)
+(10,773 real changes made)
+
+. 
+. * Remove firms with Compustat preferred stock but confirmed (manually) to have none
+. replace treatment = 0 if missing(newpref) & TMJunk == 1
+(369 real changes made)
+
+. 
+. 
+. ********************************************************************************
+. * SECTION 5: RATING AGENCY LEVERAGE ADJUSTMENTS
+. *
+. * Moody's pre-rule-change methodology counted 50% of preferred stock face value
+. * as equity when computing adjusted (rating agency) leverage.  After July 31,
+. * 2013, it counts 100% as equity.  We define:
+. *   changeratinglev = 0.5 -- preferred / (debt + equity)
+. * i.e., the mechanical decrease in Moody's leverage caused by the rule change.
+. * This is the key continuous treatment variable.
+. ********************************************************************************
+. 
+. * Spread rating variables for all time periods (needed for fixed effects)
+. foreach x of varlist TMJunk TMIG TMoodyIGboundary aboveIGboundary belowIGboundary SPIGboundary
+>  SPJunk SPIG SPnegoutlook - SPdevwatch SPRated {
+  2.     egen max`x' = max(`x'), by(gvkey)
+  3.     replace `x' = max`x'
+  4.     drop max`x'
+  5.     replace `x' = 0 if missing(`x')
+  6. }
+(221969 missing values generated)
+(21,101 real changes made)
+(221,969 real changes made)
+(221969 missing values generated)
+(21,101 real changes made)
+(221,969 real changes made)
+(221969 missing values generated)
+(21,101 real changes made)
+(221,969 real changes made)
+(221969 missing values generated)
+(21,101 real changes made)
+(221,969 real changes made)
+(221969 missing values generated)
+(21,101 real changes made)
+(221,969 real changes made)
+(221969 missing values generated)
+(27,077 real changes made)
+(221,969 real changes made)
+(221969 missing values generated)
+(21,101 real changes made)
+(221,969 real changes made)
+(221969 missing values generated)
+(21,101 real changes made)
+(221,969 real changes made)
+(221969 missing values generated)
+(21,101 real changes made)
+(221,969 real changes made)
+(221969 missing values generated)
+(21,101 real changes made)
+(221,969 real changes made)
+(221969 missing values generated)
+(21,101 real changes made)
+(221,969 real changes made)
+(221969 missing values generated)
+(21,101 real changes made)
+(221,969 real changes made)
+(221969 missing values generated)
+(21,101 real changes made)
+(221,969 real changes made)
+(221969 missing values generated)
+(21,101 real changes made)
+(221,969 real changes made)
+(221969 missing values generated)
+(21,101 real changes made)
+(221,969 real changes made)
+
+. 
+. * treated = 1 if firm is speculative-grade (Moody's) AND held preferred stock
+. gen treated = 1 if treatment == 1 & TMJunk == 1
+(279,275 missing values generated)
+
+. replace treated = 0 if missing(treated)
+(279,275 real changes made)
+
+. 
+. replace newpref = . if treated == 0
+(284 real changes made, 284 to missing)
+
+. 
+. * changeratinglev: treatment intensity (Preferred/Capital ratio at event date)
+. * Factor of 0.5 -- newpref reflects the equity credit that Moody's adds;
+. * multiplied by 2 at end of section to yield Preferred/Capital in [0,1].
+. gen changeratinglev = 0.5 * newpref / (td + seqq) if treatmentq == 1 & treated == 1
+(281,068 missing values generated)
+
+. replace changeratinglev = 0 if missing(changeratinglev)
+(281,068 real changes made)
+
+. egen minchangeratinglev = max(changeratinglev), by(gvkey)
+
+. replace changeratinglev = minchangeratinglev
+(1,685 real changes made)
+
+. drop minchangeratinglev
+
+. 
+. * S&P version (uses Compustat pstkq rather than hand-collected newpref)
+. gen changeratinglevsp = 0.5 * pref / (td + seqq) if treatmentq == 1
+(275,309 missing values generated)
+
+. egen minchangeratinglevsp = max(changeratinglevsp), by(gvkey)
+(76608 missing values generated)
+
+. replace changeratinglevsp = minchangeratinglevsp
+(198,701 real changes made)
+
+. drop minchangeratinglevsp
+
+. 
+. * Debt-to-EBITDA version of rating agency treatment intensity
+. sort companycode timecode
+
+. by companycode: gen changeratingde = -1 * (td / (oibdpq + oibdpq[_n-1] + oibdpq[_n-2] + oibdpq
+> [_n-3]) - ///
+>     ((td + 0.5 * newpref) / (oibdpq + oibdpq[_n-1] + oibdpq[_n-2] + oibdpq[_n-3]))) if treatme
+> ntq == 1 & treated == 1
+(281,069 missing values generated)
+
+. replace changeratingde = 0 if missing(changeratingde)
+(281,069 real changes made)
+
+. egen minchangeratingde = max(changeratingde), by(gvkey)
+
+. replace changeratingde = minchangeratingde
+(1,548 real changes made)
+
+. drop minchangeratingde
+
+. 
+. * Book-leverage version of treatment intensity
+. gen changeratingbla = td / atq - ((td + 0.5 * newpref) / atq) if treatmentq == 1 & treated == 
+> 1
+(281,068 missing values generated)
+
+. egen minchangeratingbla = min(changeratingbla), by(gvkey)
+(279383 missing values generated)
+
+. replace changeratingbla = minchangeratingbla
+(1,685 real changes made)
+
+. drop minchangeratingbla
+
+. replace changeratingbla = 0 if missing(changeratingbla)
+(279,383 real changes made)
+
+. 
+. * Preferred over book enterprise value
+. gen prefeq = newpref / (td + seqq) if treatmentq == 1 & treated == 1
+(281,068 missing values generated)
+
+. egen maxprefeq = max(prefeq), by(gvkey)
+(279383 missing values generated)
+
+. replace prefeq = maxprefeq if missing(prefeq)
+(1,685 real changes made)
+
+. drop maxprefeq
+
+. replace prefeq = 0 if missing(prefeq)
+(279,383 real changes made)
+
+. 
+. * Adjusted debt (pre-event: debt + 50% preferred for treated firms)
+. gen logadjdebt = log(td)              if event == 1
+(228,162 missing values generated)
+
+. replace logadjdebt = log(td + .5 * newpref) if treated == 1 & event == 0
+(1,259 real changes made)
+
+. replace logadjdebt = log(td)          if treated == 0 & event == 0
+(114,800 real changes made)
+
+. 
+. * Rating agency leverage (bl using Moody's adjusted debt)
+. gen ratinglev = td / (td + seqq)                              if event == 1
+(216,896 missing values generated)
+
+. replace ratinglev = td / (td + seqq)                          if event == 0 & treated == 0
+(139,176 real changes made)
+
+. replace ratinglev = (td + 0.5 * newpref) / (td + seqq)        if event == 0 & treated == 1
+(1,209 real changes made)
+
+. 
+. gen ratingbla = td / atq                                       if event == 1
+(216,994 missing values generated)
+
+. replace ratingbla = td / atq                                   if event == 0 & treated == 0
+(139,098 real changes made)
+
+. replace ratingbla = (td + 0.5 * newpref) / atq                 if event == 0 & treated == 1
+(1,211 real changes made)
+
+. 
+. gen ratingla = ltq / atq                                       if event == 1
+(217,140 missing values generated)
+
+. replace ratingla = ltq / atq                                   if event == 0 & treated == 0
+(138,674 real changes made)
+
+. replace ratingla = (ltq + 0.5 * newpref) / atq                 if event == 0 & treated == 1
+(1,209 real changes made)
+
+. 
+. * Alternative: using pstkq instead of hand-collected newpref
+. gen ratinglev2 = td / (td + seqq)                              if event == 1
+(216,896 missing values generated)
+
+. replace ratinglev2 = td / (td + seqq)                          if event == 0 & treated == 0
+(139,176 real changes made)
+
+. replace ratinglev2 = (td + 0.5 * pstkq) / (td + seqq)          if event == 0 & treated == 1
+(1,297 real changes made)
+
+. 
+. 
+. ********************************************************************************
+. * SECTION 6: ADDITIONAL VARIABLES AND WINSORIZATION
+. ********************************************************************************
+. 
+. * Placebo half-year dummy (for placebo tests in Table A.2)
+. gen secondhalf = 1 if month > 7 | month == 1
+(145,726 missing values generated)
+
+. replace secondhalf = 0 if missing(secondhalf)
+(145,726 real changes made)
+
+. 
+. * Increasing rating scale (M and SP from Eikon decrease as rating improves)
+. gen Moody = .
+(281,112 missing values generated)
+
+. forvalues k = 0/21 {
+  2.     replace Moody = `k' + 1 if M == 22 - `k'
+  3. }
+(11 real changes made)
+(73 real changes made)
+(0 real changes made)
+(146 real changes made)
+(345 real changes made)
+(1,041 real changes made)
+(1,933 real changes made)
+(2,386 real changes made)
+(2,858 real changes made)
+(2,879 real changes made)
+(2,017 real changes made)
+(1,878 real changes made)
+(2,678 real changes made)
+(3,435 real changes made)
+(2,392 real changes made)
+(1,465 real changes made)
+(1,469 real changes made)
+(744 real changes made)
+(269 real changes made)
+(127 real changes made)
+(58 real changes made)
+(281 real changes made)
+
+. 
+. gen S = .
+(281,112 missing values generated)
+
+. forvalues k = 0/21 {
+  2.     replace S = `k' + 1 if SP == 22 - `k'
+  3. }
+(74 real changes made)
+(0 real changes made)
+(81 real changes made)
+(56 real changes made)
+(152 real changes made)
+(389 real changes made)
+(1,398 real changes made)
+(2,932 real changes made)
+(3,289 real changes made)
+(3,690 real changes made)
+(3,119 real changes made)
+(2,449 real changes made)
+(4,282 real changes made)
+(5,093 real changes made)
+(3,185 real changes made)
+(2,268 real changes made)
+(2,083 real changes made)
+(960 real changes made)
+(367 real changes made)
+(209 real changes made)
+(86 real changes made)
+(141 real changes made)
+
+. 
+. * Contemporary junk dummies (complement to the at-treatment-date TMJunk/SPJunk)
+. drop TMoodyJunk
+
+. gen MJunk = 1 if M  > 10 & !missing(M)
+(265,545 missing values generated)
+
+. replace MJunk = 0 if missing(MJunk)
+(265,545 real changes made)
+
+. gen SJunk = 1 if SP > 10 & !missing(SP)
+(263,483 missing values generated)
+
+. replace SJunk = 0 if missing(SJunk)
+(263,483 real changes made)
+
+. 
+. * S&P negative/positive signal at treatment (used in triple-diff analyses)
+. gen SPneg = 1 if SPnegwatch == 1 & treatmentq == 1
+(280,729 missing values generated)
+
+. replace SPneg = 1 if SPnegoutlook == 1 & treatmentq == 1
+(51 real changes made)
+
+. egen maxSPneg = max(SPneg), by(companycode)
+(263557 missing values generated)
+
+. replace SPneg = maxSPneg
+(17,121 real changes made)
+
+. replace SPneg = 0 if missing(SPneg)
+(263,557 real changes made)
+
+. 
+. replace SPRated = 0 if missing(SPRated)
+(0 real changes made)
+
+. gen SPpos = 1 if SPposwatch == 1 & treatmentq == 1
+(280,963 missing values generated)
+
+. replace SPpos = 1 if SPposoutlook == 1 & treatmentq == 1
+(79 real changes made)
+
+. replace SPpos = 1 if SPRated == 0 & treatmentq == 1        // not S&P rated -> less constraine
+> d
+(7,216 real changes made)
+
+. egen maxSPpos = max(SPpos), by(companycode)
+(42534 missing values generated)
+
+. replace SPpos = maxSPpos
+(231,134 real changes made)
+
+. drop maxSPpos
+
+. replace SPpos = 0 if missing(SPpos)
+(42,534 real changes made)
+
+. 
+. gen SPpos2 = 1 if SPposoutlook == 1 & treatmentq == 1
+(281,021 missing values generated)
+
+. replace SPpos2 = 1 if SPRated == 0 & treatmentq == 1
+(7,216 real changes made)
+
+. egen maxSPpos2 = max(SPpos2), by(companycode)
+(47959 missing values generated)
+
+. replace SPpos2 = maxSPpos2
+(225,846 real changes made)
+
+. drop maxSPpos2
+
+. replace SPpos2 = 0 if missing(SPpos2)
+(47,959 real changes made)
+
+. 
+. gen SPpos3 = 1 if SPposwatch == 1 & treatmentq == 1
+(280,963 missing values generated)
+
+. replace SPpos3 = 1 if SPRated == 0 & treatmentq == 1
+(7,219 real changes made)
+
+. egen maxSPpos3 = max(SPpos3), by(companycode)
+(45570 missing values generated)
+
+. replace SPpos3 = maxSPpos3
+(228,174 real changes made)
+
+. drop maxSPpos3
+
+. replace SPpos3 = 0 if missing(SPpos3)
+(45,570 real changes made)
+
+. 
+. gen posorneg = 1 if SPpos == 1 | SPneg == 1
+(26,810 missing values generated)
+
+. replace posorneg = 0 if missing(posorneg)
+(26,810 real changes made)
+
+. 
+. * Moody's negative watch at treatment
+. gen Moodyneg = 1 if Moodynegwatch == 1 & treatmentq == 1
+(280,901 missing values generated)
+
+. egen maxMoodyneg = max(Moodyneg), by(companycode)
+(272584 missing values generated)
+
+. replace Moodyneg = maxMoodyneg
+(8,317 real changes made)
+
+. replace Moodyneg = 0 if missing(Moodyneg)
+(272,584 real changes made)
+
+. 
+. * Split-rated dummies (junk by one agency, IG by the other)
+. gen SJunkonly  = 1 if SPJunk == 1 & TMJunk == 0
+(276,910 missing values generated)
+
+. replace SJunkonly = 0 if missing(SJunkonly)
+(276,910 real changes made)
+
+. 
+. gen MJunkonly  = 1 if TMJunk == 1 & SPJunk == 0
+(278,359 missing values generated)
+
+. replace MJunkonly = 0 if missing(MJunkonly)
+(278,359 real changes made)
+
+. 
+. gen MIGonly    = 1 if TMIG == 1 & SPIG == 0
+(279,844 missing values generated)
+
+. replace MIGonly = 0 if missing(MIGonly)
+(279,844 real changes made)
+
+. 
+. gen SPIGonly   = 1 if TMIG == 0 & SPIG == 1
+(275,329 missing values generated)
+
+. replace SPIGonly = 0 if missing(SPIGonly)
+(275,329 real changes made)
+
+. 
+. gen MJunkonly2 = 1 if MJunk == 1 & SJunk == 0
+(279,264 missing values generated)
+
+. replace MJunkonly2 = 0 if missing(MJunkonly2)
+(279,264 real changes made)
+
+. 
+. gen junk    = 1 if SPJunk == 1 | TMJunk == 1
+(256,585 missing values generated)
+
+. replace junk = 0 if missing(junk)
+(256,585 real changes made)
+
+. 
+. gen onejunk = 1 if SPJunk == 1 & TMJunk == 0
+(276,910 missing values generated)
+
+. replace onejunk = 1 if SPJunk == 0 & TMJunk == 1
+(2,753 real changes made)
+
+. replace onejunk = 0 if missing(onejunk)
+(274,157 real changes made)
+
+. 
+. gen oneig   = 1 if SPIG == 1 & TMIG == 0
+(275,329 missing values generated)
+
+. replace oneig = 1 if SPIG == 0 & TMIG == 1
+(1,268 real changes made)
+
+. replace oneig = 0 if missing(oneig)
+(274,061 real changes made)
+
+. 
+. gen ig = 1 if SPIG == 1 | TMIG == 1
+(255,511 missing values generated)
+
+. replace ig = 0 if missing(ig)
+(255,511 real changes made)
+
+. 
+. gen onejunk2 = 1 if SJunk == 1 & TMJunk == 0
+(275,914 missing values generated)
+
+. replace onejunk2 = 1 if SJunk == 0 & TMJunk == 1
+(7,894 real changes made)
+
+. replace onejunk2 = 0 if missing(onejunk2)
+(268,020 real changes made)
+
+. 
+. gen onejunkig = 1 if oneig == 1 | onejunk == 1
+(269,058 missing values generated)
+
+. replace onejunkig = 0 if missing(onejunkig)
+(269,058 real changes made)
+
+. 
+. * Rating coverage indicators
+. gen rated  = 1 if !missing(M) | !missing(SP)
+(243,468 missing values generated)
+
+. replace rated = 0 if missing(rated)
+(243,468 real changes made)
+
+. 
+. gen Mrated = 1 if !missing(M)
+(252,627 missing values generated)
+
+. replace Mrated = 0 if missing(Mrated)
+(252,627 real changes made)
+
+. 
+. gen Srated = 1 if !missing(SP)
+(244,809 missing values generated)
+
+. replace Srated = 0 if missing(Srated)
+(244,809 real changes made)
+
+. 
+. gen Monly = 1 if Mrated == 1 & Srated == 0
+(279,771 missing values generated)
+
+. replace Monly = 0 if missing(Monly) & rated == 1
+(36,303 real changes made)
+
+. 
+. gen Sonly = 1 if Mrated == 0 & Srated == 1
+(271,953 missing values generated)
+
+. replace Sonly = 0 if missing(Sonly) & rated == 1
+(28,485 real changes made)
+
+. 
+. * Time--rating fixed-effect codes for split-rated firms
+. gen num = MJuly if onejunk == 1
+(277,720 missing values generated)
+
+. replace num = SJuly if missing(MJuly) & onejunk == 1
+(3,563 real changes made)
+
+. egen ratingnumt    = group(num timecode)
+(274157 missing values generated)
+
+. egen ratingnumi10t = group(num itimecode10)
+(274157 missing values generated)
+
+. egen ratingMt      = group(MJuly timecode)
+(240969 missing values generated)
+
+. 
+. gen splitrated = 1 if Moody != S & !missing(S) & !missing(Moody)
+(265,590 missing values generated)
+
+. replace splitrated = 0 if Moody == S & !missing(S) & !missing(Moody)
+(11,622 real changes made)
+
+. 
+. * Manual correction: Danaher had positive watch incorrectly coded as negative outlook
+. replace SPneg = 0 if tic == "DAN" & !missing(tic)
+(42 real changes made)
+
+. 
+. * Drop financial firms and utility holding company
+. drop if sic >= 6000 & sic <= 6999
+(113,484 observations deleted)
+
+. drop if sic == 9995
+(2,420 observations deleted)
+
+. drop if tic == "AIG1"
+(33 observations deleted)
+
+. 
+. * Winsorize key financial variables at 1st and 99th percentile
+. foreach x of varlist bl atqc ppec ratingbla deltaltd - deltaltd2 ppe debtebitda logltdebt logd
+> iv logstdebt bla logdebt logadjdebt logcash sga - logequitysale size {
+  2.     winsor2 `x', suffix(_win) cuts(1 99)
+  3.     winsor2 `x', suffix(_trim) cuts(1 99) trim
+  4. }
+
+. 
+. * Winsorize controls
+. foreach x of varlist mk2bk prof tang sales {
+  2.     winsor2 `x', suffix(_win) cuts(1 99)
+  3. }
+
+. 
+. * Time fixed-effect dummies
+. tabulate timecode, generate(tc)
+
+group(datac |
+       qtr) |      Freq.     Percent        Cum.
+------------+-----------------------------------
+          1 |        270        0.16        0.16
+          2 |      3,162        1.91        2.08
+          3 |      3,173        1.92        4.00
+          4 |      3,183        1.93        5.93
+          5 |      3,187        1.93        7.86
+          6 |      3,288        1.99        9.85
+          7 |      3,299        2.00       11.84
+          8 |      3,314        2.01       13.85
+          9 |      3,315        2.01       15.86
+         10 |      3,413        2.07       17.92
+         11 |      3,420        2.07       19.99
+         12 |      3,429        2.08       22.07
+         13 |      3,441        2.08       24.15
+         14 |      3,579        2.17       26.32
+         15 |      3,592        2.17       28.49
+         16 |      3,622        2.19       30.69
+         17 |      3,638        2.20       32.89
+         18 |      3,798        2.30       35.19
+         19 |      3,820        2.31       37.50
+         20 |      3,838        2.32       39.83
+         21 |      3,849        2.33       42.16
+         22 |      4,117        2.49       44.65
+         23 |      4,132        2.50       47.15
+         24 |      4,161        2.52       49.67
+         25 |      4,193        2.54       52.21
+         26 |      4,573        2.77       54.98
+         27 |      4,608        2.79       57.77
+         28 |      4,650        2.82       60.58
+         29 |      4,677        2.83       63.41
+         30 |      4,966        3.01       66.42
+         31 |      4,989        3.02       69.44
+         32 |      4,914        2.98       72.41
+         33 |      4,813        2.91       75.33
+         34 |      4,833        2.93       78.25
+         35 |      4,748        2.87       81.13
+         36 |      4,653        2.82       83.95
+         37 |      4,492        2.72       86.67
+         38 |      4,439        2.69       89.35
+         39 |      4,325        2.62       91.97
+         40 |      4,195        2.54       94.51
+         41 |      4,014        2.43       96.94
+         42 |      3,900        2.36       99.30
+         43 |      1,153        0.70      100.00
+------------+-----------------------------------
+      Total |    165,175      100.00
+
+. 
+. * Rescale treatment intensity: changeratinglev now = Preferred/Capital  [0,1]
+. * The factor of 2 converts from the 0.5-- definition above to face-value share.
+. replace changeratinglev = changeratinglev * 2
+(1,729 real changes made)
+
+. replace changeratingbla = changeratingbla * -2
+(1,729 real changes made)
+
+. 
+. * Preferred face value in billions (for summary statistics)
+. gen prefbn = newpref / 1000
+(163,446 missing values generated)
+
+. replace prefbn = 0 if missing(newpref)
+(163,446 real changes made)
+
+. 
+. * Altman Z-score
+. gen Altman_Z = 3.3*(oiadpq/atq) + 0.99*(saleq/atq) + 0.6*(me/ltq) + 1.2*(wcapq/atq) + 1.4*(req
+> /atq)
+(33,095 missing values generated)
+
+. winsor2 Altman_Z, suffix(_win) cuts(1 99)
+
+. 
+. gen alert  = 1 if Altman_Z_win < 3
+(77,982 missing values generated)
+
+. replace alert = 0 if missing(alert)
+(77,982 real changes made)
+
+. gen alert2 = 1 if Altman_Z_win < 1.8
+(100,111 missing values generated)
+
+. replace alert2 = 0 if missing(alert2)
+(100,111 real changes made)
+
+. gen alert3 = 1 if Altman_Z_win < 0
+(136,040 missing values generated)
+
+. replace alert3 = 0 if missing(alert3)
+(136,040 real changes made)
+
+. 
+. * Short-sample indicator (tighter definition used in main regressions)
+. gen sample_short = (sample == 1 & yearquarter < yq(2015,3) & yearquarter > yq(2012,2))
+
+. 
+. * Debt growth (year-over-year using 4-quarter lag, panel-tsset)
+. xtset gvkey_d yearquarter
+       panel variable:  gvkey_d (unbalanced)
+        time variable:  yearquarter, 2005q4 to 2016q2, but with gaps
+                delta:  1 quarter
+
+. 
+. gen debt_growth  = (td - l4.td) / (l4.td + l4.seqq)
+(30,859 missing values generated)
+
+. winsor2 debt_growth, suffix(_win) cuts(1 99)
+
+. 
+. gen debt_growth2 = (td - l4.td) / l4.td
+(57,031 missing values generated)
+
+. winsor2 debt_growth2, suffix(_win) cuts(5 95)
+
+. 
+. gen lev_growth   = (bl  - l4.bl)  / l4.bl
+(57,842 missing values generated)
+
+. winsor2 lev_growth, suffix(_win) cuts(1 99)
+
+. 
+. gen lev_growth2  = (bla - l4.bla) / l4.bla
+(58,014 missing values generated)
+
+. winsor2 lev_growth2, suffix(_win) cuts(1 99)
+
+. 
+. * Trim leverage measures to [0,1]
+. gen bl_1  = min(bl, 1)
+
+. replace bl_1 = max(bl_1, 0)
+(8,643 real changes made)
+
+. 
+. gen bla_1 = min(bla, 1)
+
+. replace bla_1 = max(bla_1, 0)
+(3 real changes made)
+
+. 
+. gen la_1  = min(la, 1)
+
+. replace la_1 = max(la_1, 0)
+(6 real changes made)
+
+. 
+. gen ratinglev_1  = min(ratinglev, 1)
+
+. replace ratinglev_1 = max(ratinglev_1, 0)
+(8,643 real changes made)
+
+. 
+. gen ratingbla_1  = min(ratingbla, 1)
+
+. replace ratingbla_1 = max(ratingbla_1, 0)
+(3 real changes made)
+
+. 
+. gen ratingla_1   = min(ratingla, 1)
+
+. replace ratingla_1 = max(ratingla_1, 0)
+(6 real changes made)
+
+. 
+. gen le = ltq / (me + ltq)
+(24,796 missing values generated)
+
+. 
+. gen year_cq = year(dofq(yearquarter))
+
+. 
+. * Ratings-trigger firms (identified from 10-K/10-Q text review)
+. gen trigger = 1 if gvkey == "001356"  // Alcoa
+(165,133 missing values generated)
+
+. replace trigger = 1 if gvkey == "008807"  // PNM Resources
+(41 real changes made)
+
+. replace trigger = 1 if gvkey == "012615"  // M/I Homes
+(42 real changes made)
+
+. replace trigger = 1 if gvkey == "011670"  // HRG
+(41 real changes made)
+
+. replace trigger = 1 if gvkey == "027786"  // Chesapeake
+(41 real changes made)
+
+. replace trigger = 1 if gvkey == "135990"  // NRG
+(41 real changes made)
+
+. replace trigger = 1 if gvkey == "005073"  // GM
+(42 real changes made)
+
+. replace trigger = 1 if gvkey == "165699"  // Regency
+(37 real changes made)
+
+. replace trigger = 0 if missing(trigger)
+(164,848 real changes made)
+
+. 
+. gen trigger3 = trigger
+
+. replace trigger3 = 0 if gvkey == "005073"  // GM: IG upgrade condition, not applicable
+(42 real changes made)
+
+. replace trigger3 = 0 if gvkey == "012615"  // M/I Homes: not applicable
+(42 real changes made)
+
+. replace trigger3 = 0 if gvkey == "027786"  // Chesapeake: loan-dependent
+(41 real changes made)
+
+. 
+. * Derivatives exposure variables
+. foreach x in aocidergl derac deralt derlc derllt ciderglq derhedgly derhedglq ciderglq cidergl
+> y {
+  2.     replace `x' = 0 if missing(`x')
+  3. }
+(19,730 real changes made)
+(153,604 real changes made)
+(155,906 real changes made)
+(148,986 real changes made)
+(152,426 real changes made)
+(15,189 real changes made)
+(149,088 real changes made)
+(149,122 real changes made)
+(0 real changes made)
+(14,962 real changes made)
+
+. 
+. gen logder = log(1 + derlc + derllt)
+(5 missing values generated)
+
+. winsor2 logder, suffix(_win) cuts(1 99)
+
+. 
+. gen netderq = (derac + deralt - derlc - derllt) / atq
+(11,182 missing values generated)
+
+. winsor2 netderq, suffix(_win) cuts(1 99)
+
+. 
+. gen netderlt = (deralt - derllt) / atq if treatmentq == 1
+(160,797 missing values generated)
+
+. egen mnetderlt = max(netderlt), by(gvkey)
+(11349 missing values generated)
+
+. drop netderlt
+
+. ren mnetderlt netderlt
+
+. winsor2 netderlt, suffix(_win) cuts(1 99)
+
+. 
+. gen netderlt2 = (deralt - derllt) / (seqq + td) if treatmentq == 1
+(160,765 missing values generated)
+
+. egen mnetderlt2 = max(netderlt2), by(gvkey)
+(10807 missing values generated)
+
+. drop netderlt2
+
+. ren mnetderlt2 netderlt2
+
+. winsor2 netderlt2, suffix(_win) cuts(1 99)
+
+. 
+. gen lderlt = derllt / atq if treatmentq == 1
+(160,797 missing values generated)
+
+. egen mlderlt = max(lderlt), by(gvkey)
+(11349 missing values generated)
+
+. drop lderlt
+
+. ren mlderlt lderlt
+
+. winsor2 lderlt, suffix(_win) cuts(1 99)
+
+. 
+. gen netderlt3 = (derac + deralt - derlc - derllt) / ltq if treatmentq == 1
+(160,769 missing values generated)
+
+. gen dl2        = (derlc + derllt) / (seqq + td)         if treatmentq == 1
+(160,765 missing values generated)
+
+. 
+. gen derinc = derhedglq / atq if treatmentq == 1
+(160,797 missing values generated)
+
+. egen dinc  = max(derinc), by(gvkey)
+(11349 missing values generated)
+
+. gen derinc2 = ciderglq / atq if treatmentq == 1
+(160,797 missing values generated)
+
+. egen dinc2  = max(derinc2), by(gvkey)
+(11349 missing values generated)
+
+. gen derinc3 = cidergly / atq if treatmentq == 1
+(160,797 missing values generated)
+
+. gen derinc4 = derhedgly / atq if treatmentq == 1
+(160,797 missing values generated)
+
+. egen dinc4  = max(derinc4), by(gvkey)
+(11349 missing values generated)
+
+. gen derinc5 = aocidergl / atq if treatmentq == 1
+(160,797 missing values generated)
+
+. egen dinc5  = max(derinc5), by(gvkey)
+(11349 missing values generated)
+
+. 
+. 
+. * Controls measured at time of rule change (frozen cross-section)
+. foreach x of varlist prof_win tang_win sales_win mk2bk_win {
+  2.     gen `x'0 = `x' if treatmentq == 1
+  3.     egen max`x'0 = max(`x'0), by(gvkey)
+  4.     replace `x'0 = max`x'0 if missing(`x'0)
+  5.     drop max`x'0
+  6. }
+(160,818 missing values generated)
+(11850 missing values generated)
+(148,968 real changes made)
+(160,802 missing values generated)
+(11534 missing values generated)
+(149,268 real changes made)
+(160,420 missing values generated)
+(4771 missing values generated)
+(155,649 real changes made)
+(161,189 missing values generated)
+(23192 missing values generated)
+(137,997 real changes made)
+
+. 
+. 
+. ********************************************************************************
+. * SECTION 7: SAVE Master_v1.dta
+. * Full panel with all variables; used directly for unmatched (full-sample)
+. * regressions in the Online Appendix.
+. ********************************************************************************
+. 
+. save "$inter/Master_v1.dta", replace
+file C:\Users\cf8745\Box\Research\Rating Agency Paper - Final\ReplicationPackage/Data/Intermedia
+> te/Master_v1.dta saved
+
+. 
+. 
+. ********************************************************************************
+. * SECTION 8: PROPENSITY SCORE MATCHING
+. *
+. * Main matched sample: mahapick, 4 matches with replacement, using:
+. *   MJuly (Moody's rating), lev_growth_win, mk2bk_win
+. *   sliced by Fama-French industry.
+. * Robustness: 1 match without replacement (kmatch, same covariates).
+. *
+. * match files saved to $proc/ (temporary intermediate datasets).
+. ********************************************************************************
+. 
+. use "$inter/Master_v1.dta", clear
+
+. 
+. * Filter to single cross-section at treatment quarter
+. bys gvkey: egen maxdate = max(datadate)
+
+. bys gvkey: egen mindate = min(datadate)
+
+. format maxdate %d
+
+. format mindate %d
+
+. 
+. * Drop if any control variable missing during short sample window
+. foreach v of varlist prof_win tang_win sales_win mk2bk_win MJuly {
+  2.     gen temp_miss_v = (`v' == .)
+  3.     bys gvkey: egen miss_`v' = max(temp_miss_v) if sample_short == 1
+  4.     drop if miss_`v' == 1
+  5.     drop temp_miss_v
+  6. }
+(108676 missing values generated)
+(12,603 observations deleted)
+(108676 missing values generated)
+(104 observations deleted)
+(108676 missing values generated)
+(65 observations deleted)
+(108676 missing values generated)
+(3,760 observations deleted)
+(108676 missing values generated)
+(31,059 observations deleted)
+
+. 
+. keep if treatmentq == 1 & TMJunk == 1
+(117,152 observations deleted)
+
+. sort gvkey
+
+. 
+. * Require balanced panel: control firms must span at least 2012Q3--2014Q3
+. keep if (maxdate >= date("07-31-2014","MDY") & mindate < date("08-31-2012","MDY")) | treated =
+> = 1
+(25 observations deleted)
+
+. 
+. * Mahapick matching: 4 controls per treated firm, with replacement
+. * Match on Moody's rating notch and pre-treatment leverage growth, within industry
+. cd "$inter"
+C:\Users\cf8745\Box\Research\Rating Agency Paper - Final\ReplicationPackage\Data\Intermediate
+
+. mahapick MJuly lev_growth_win mk2bk_win, idvar(gvkey) treated(treated) genfile(match2) nummatc
+> hes(4) replace matchon(industry) sliceby(industry)
+file match2 opened for posting
+mahapick called; num treated: 44
+sliceby = industry
+file C:\Temp\ST_0l000002.tmp saved
+numslices = 43
+
+---- sliceby has been specified
+
+ processing slice 1; N=2; treated=0
+file C:\Temp\ST_0l000003.tmp saved
+
+ processing slice 2; N=8; treated=1
+mahapicksome called; refobs= 1; id (gvkey) = 170527
+file C:\Temp\ST_0l000004.tmp saved
+
+ processing slice 3; N=1; treated=0
+file C:\Temp\ST_0l000005.tmp saved
+
+ processing slice 4; N=1; treated=0
+file C:\Temp\ST_0l000006.tmp saved
+
+ processing slice 5; N=16; treated=0
+file C:\Temp\ST_0l000007.tmp saved
+
+ processing slice 6; N=4; treated=0
+file C:\Temp\ST_0l000008.tmp saved
+
+ processing slice 7; N=3; treated=0
+file C:\Temp\ST_0l000009.tmp saved
+
+ processing slice 8; N=7; treated=0
+file C:\Temp\ST_0l00000a.tmp saved
+
+ processing slice 9; N=14; treated=1
+mahapicksome called; refobs= 1; id (gvkey) = 012589
+file C:\Temp\ST_0l00000b.tmp saved
+
+ processing slice 10; N=2; treated=0
+file C:\Temp\ST_0l00000c.tmp saved
+
+ processing slice 11; N=3; treated=1
+mahapicksome called; refobs= 1; id (gvkey) = 146156
+Warning: distance measure missing for 1 candidates
+file C:\Temp\ST_0l00000d.tmp saved
+
+ processing slice 12; N=18; treated=1
+mahapicksome called; refobs= 1; id (gvkey) = 006528
+file C:\Temp\ST_0l00000e.tmp saved
+
+ processing slice 13; N=4; treated=0
+file C:\Temp\ST_0l00000f.tmp saved
+
+ processing slice 14; N=3; treated=0
+file C:\Temp\ST_0l00000g.tmp saved
+
+ processing slice 15; N=10; treated=0
+file C:\Temp\ST_0l00000h.tmp saved
+
+ processing slice 16; N=13; treated=2
+mahapicksome called; refobs= 1; id (gvkey) = 005750
+mahapicksome called; refobs= 2; id (gvkey) = 012615
+file C:\Temp\ST_0l00000i.tmp saved
+
+ processing slice 17; N=15; treated=3
+mahapicksome called; refobs= 1; id (gvkey) = 001356
+mahapicksome called; refobs= 2; id (gvkey) = 025405
+mahapicksome called; refobs= 3; id (gvkey) = 062516
+file C:\Temp\ST_0l00000j.tmp saved
+
+ processing slice 18; N=4; treated=0
+file C:\Temp\ST_0l00000k.tmp saved
+
+ processing slice 19; N=12; treated=1
+mahapicksome called; refobs= 1; id (gvkey) = 179577
+file C:\Temp\ST_0l00000l.tmp saved
+
+ processing slice 20; N=5; treated=1
+mahapicksome called; refobs= 1; id (gvkey) = 011670
+file C:\Temp\ST_0l00000m.tmp saved
+
+ processing slice 21; N=13; treated=4
+mahapicksome called; refobs= 1; id (gvkey) = 003734
+mahapicksome called; refobs= 2; id (gvkey) = 005073
+mahapicksome called; refobs= 3; id (gvkey) = 006081
+mahapicksome called; refobs= 4; id (gvkey) = 163765
+file C:\Temp\ST_0l00000n.tmp saved
+
+ processing slice 22; N=4; treated=0
+file C:\Temp\ST_0l00000o.tmp saved
+
+ processing slice 23; N=2; treated=0
+file C:\Temp\ST_0l00000p.tmp saved
+
+ processing slice 24; N=1; treated=0
+file C:\Temp\ST_0l00000q.tmp saved
+
+ processing slice 25; N=2; treated=1
+mahapicksome called; refobs= 1; id (gvkey) = 005560
+file C:\Temp\ST_0l00000r.tmp saved
+
+ processing slice 26; N=4; treated=0
+file C:\Temp\ST_0l00000s.tmp saved
+
+ processing slice 27; N=6; treated=1
+mahapicksome called; refobs= 1; id (gvkey) = 011440
+file C:\Temp\ST_0l00000t.tmp saved
+
+ processing slice 28; N=67; treated=13
+mahapicksome called; refobs= 1; id (gvkey) = 008387
+mahapicksome called; refobs= 2; id (gvkey) = 008440
+mahapicksome called; refobs= 3; id (gvkey) = 025874
+mahapicksome called; refobs= 4; id (gvkey) = 027786
+mahapicksome called; refobs= 5; id (gvkey) = 066029
+mahapicksome called; refobs= 6; id (gvkey) = 146137
+mahapicksome called; refobs= 7; id (gvkey) = 151632
+mahapicksome called; refobs= 8; id (gvkey) = 165699
+mahapicksome called; refobs= 9; id (gvkey) = 176899
+mahapicksome called; refobs= 10; id (gvkey) = 178684
+mahapicksome called; refobs= 11; id (gvkey) = 178921
+mahapicksome called; refobs= 12; id (gvkey) = 180145
+mahapicksome called; refobs= 13; id (gvkey) = 188663
+Warning: distance measure missing for 4 candidates
+file C:\Temp\ST_0l00000u.tmp saved
+
+ processing slice 29; N=10; treated=4
+mahapicksome called; refobs= 1; id (gvkey) = 008807
+mahapicksome called; refobs= 2; id (gvkey) = 135990
+mahapicksome called; refobs= 3; id (gvkey) = 144097
+mahapicksome called; refobs= 4; id (gvkey) = 150277
+file C:\Temp\ST_0l00000v.tmp saved
+
+ processing slice 30; N=20; treated=3
+mahapicksome called; refobs= 1; id (gvkey) = 003036
+mahapicksome called; refobs= 2; id (gvkey) = 112030
+mahapicksome called; refobs= 3; id (gvkey) = 117145
+file C:\Temp\ST_0l00000w.tmp saved
+
+ processing slice 31; N=2; treated=0
+file C:\Temp\ST_0l00000x.tmp saved
+
+ processing slice 32; N=18; treated=1
+mahapicksome called; refobs= 1; id (gvkey) = 184868
+file C:\Temp\ST_0l000010.tmp saved
+
+ processing slice 33; N=5; treated=0
+file C:\Temp\ST_0l000011.tmp saved
+
+ processing slice 34; N=11; treated=1
+mahapicksome called; refobs= 1; id (gvkey) = 061685
+file C:\Temp\ST_0l000012.tmp saved
+
+ processing slice 35; N=13; treated=0
+file C:\Temp\ST_0l000013.tmp saved
+
+ processing slice 36; N=3; treated=1
+mahapicksome called; refobs= 1; id (gvkey) = 023810
+file C:\Temp\ST_0l000014.tmp saved
+
+ processing slice 37; N=11; treated=0
+file C:\Temp\ST_0l000015.tmp saved
+
+ processing slice 38; N=5; treated=0
+file C:\Temp\ST_0l000016.tmp saved
+
+ processing slice 39; N=17; treated=0
+file C:\Temp\ST_0l000017.tmp saved
+
+ processing slice 40; N=13; treated=2
+mahapicksome called; refobs= 1; id (gvkey) = 002290
+mahapicksome called; refobs= 2; id (gvkey) = 011017
+file C:\Temp\ST_0l000018.tmp saved
+
+ processing slice 41; N=24; treated=2
+mahapicksome called; refobs= 1; id (gvkey) = 009155
+mahapicksome called; refobs= 2; id (gvkey) = 014624
+file C:\Temp\ST_0l000019.tmp saved
+
+ processing slice 42; N=5; treated=0
+file C:\Temp\ST_0l00001a.tmp saved
+
+ processing slice 43; N=6; treated=0
+file C:\Temp\ST_0l00001b.tmp saved
+(label ffi10 already defined)
+(label ffi already defined)
+(label ffi10 already defined)
+(label ffi already defined)
+(label ffi10 already defined)
+(label ffi already defined)
+(label ffi10 already defined)
+(label ffi already defined)
+(label ffi10 already defined)
+(label ffi already defined)
+(label ffi10 already defined)
+(label ffi already defined)
+(label ffi10 already defined)
+(label ffi already defined)
+(label ffi10 already defined)
+(label ffi already defined)
+(label ffi10 already defined)
+(label ffi already defined)
+(label ffi10 already defined)
+(label ffi already defined)
+(label ffi10 already defined)
+(label ffi already defined)
+(label ffi10 already defined)
+(label ffi already defined)
+(label ffi10 already defined)
+(label ffi already defined)
+(label ffi10 already defined)
+(label ffi already defined)
+(label ffi10 already defined)
+(label ffi already defined)
+(label ffi10 already defined)
+(label ffi already defined)
+(label ffi10 already defined)
+(label ffi already defined)
+(label ffi10 already defined)
+(label ffi already defined)
+(label ffi10 already defined)
+(label ffi already defined)
+(label ffi10 already defined)
+(label ffi already defined)
+(label ffi10 already defined)
+(label ffi already defined)
+(label ffi10 already defined)
+(label ffi already defined)
+(label ffi10 already defined)
+(label ffi already defined)
+(label ffi10 already defined)
+(label ffi already defined)
+(label ffi10 already defined)
+(label ffi already defined)
+(label ffi10 already defined)
+(label ffi already defined)
+(label ffi10 already defined)
+(label ffi already defined)
+(label ffi10 already defined)
+(label ffi already defined)
+(label ffi10 already defined)
+(label ffi already defined)
+(label ffi10 already defined)
+(label ffi already defined)
+(label ffi10 already defined)
+(label ffi already defined)
+(label ffi10 already defined)
+(label ffi already defined)
+(label ffi10 already defined)
+(label ffi already defined)
+(label ffi10 already defined)
+(label ffi already defined)
+(label ffi10 already defined)
+(label ffi already defined)
+(label ffi10 already defined)
+(label ffi already defined)
+(label ffi10 already defined)
+(label ffi already defined)
+(label ffi10 already defined)
+(label ffi already defined)
+(label ffi10 already defined)
+(label ffi already defined)
+(label ffi10 already defined)
+(label ffi already defined)
+(label ffi10 already defined)
+(label ffi already defined)
+(label ffi10 already defined)
+(label ffi already defined)
+file match2 closed
+
+. 
+. * 1-match without replacement using kmatch (robustness check)
+. preserve
+
+. kmatch md treated MJuly lev_growth_win mk2bk_win, ematch(industry) nn(1) wor gen idgenerate(mi
+> d) idvar(gvkey)
+
+Multivariate-distance nearest-neighbor matching (without replacement)
+
+                                                Number of obs     =        401
+                                                Neighbors:    min =          1
+Treatment   : treated = 1                                     max =          1
+Metric      : mahalanobis
+Covariates  : MJuly lev_growth_win mk2bk_win
+Exact       : industry
+
+Matching statistics
+------------------------------------------------------------------------------
+           |             Matched             |            Controls           
+           |       Yes         No      Total |      Used     Unused      Total
+-----------+---------------------------------+--------------------------------
+   Treated |        43          0         43 |        43        315        358
+ Untreated |        43        315        358 |        43          0         43
+  Combined |        86        315        401 |        86        315        401
+------------------------------------------------------------------------------
+
+Stored variables
+              storage   display    value
+variable name   type    format     label      variable label
+------------------------------------------------------------------------------------------------
+_KM_treat       byte    %8.0g                 Treatment indicator
+_KM_nc          byte    %10.0g                Number of matched controls
+_KM_nm          byte    %10.0g                Number of times used as a match
+_KM_mw          double  %10.0g                Matching weight
+_KM_strata      byte    %8.0g                 Matching stratum
+mid1            str24   %24s                  ID of control 1
+
+. keep if treated == 1 & _KM_nm > 0
+(363 observations deleted)
+
+. keep gvkey mid1
+
+. rename gvkey _prime_id
+
+. rename mid1 gvkey
+
+. save "$inter/temp.dta", replace
+file C:\Users\cf8745\Box\Research\Rating Agency Paper - Final\ReplicationPackage/Data/Intermedia
+> te/temp.dta saved
+
+. keep _prime_id
+
+. gen gvkey = _prime_id
+
+. append using "$inter/temp.dta"
+(note: variable gvkey was str6, now str24 to accommodate using data's values)
+
+. sort _prime_id gvkey
+
+. gen _matchnum = 1
+
+. save "$inter/match2_1norep.dta", replace
+file C:\Users\cf8745\Box\Research\Rating Agency Paper - Final\ReplicationPackage/Data/Intermedia
+> te/match2_1norep.dta saved
+
+. restore
+
+. 
+. * Reshape match file: one row per control--treated pair
+. use "$inter/match2.dta", clear
+
+. rename gvkey       gvkey_control
+
+. rename _prime_id   gvkey_treat
+
+. drop _matchnum
+
+. sort gvkey_control
+
+. save "$inter/match3.dta", replace
+file C:\Users\cf8745\Box\Research\Rating Agency Paper - Final\ReplicationPackage/Data/Intermedia
+> te/match3.dta saved
+
+. 
+. use "$inter/match2_1norep.dta", clear
+
+. rename gvkey       gvkey_control
+
+. rename _prime_id   gvkey_treat
+
+. drop _matchnum
+
+. sort gvkey_control
+
+. save "$inter/match3_1norep.dta", replace
+file C:\Users\cf8745\Box\Research\Rating Agency Paper - Final\ReplicationPackage/Data/Intermedia
+> te/match3_1norep.dta saved
+
+. 
+. * Build matched panel: joinby pairs onto full panel, create cohort FE
+. use "$inter/Master_v1.dta", clear
+
+. rename gvkey gvkey_control
+
+. joinby gvkey_control using "$inter/match3.dta", unmatched(both)
+
+. keep if _merge == 3
+(159,101 observations deleted)
+
+. replace gvkey_treat = gvkey_control if gvkey_treat == ""
+(0 real changes made)
+
+. egen double cohort  = group(gvkey_treat)
+
+. drop gvkey_treat
+
+. rename gvkey_control gvkey
+
+. sum cohort, detail
+
+                     group(gvkey_treat)
+-------------------------------------------------------------
+      Percentiles      Smallest
+ 1%            1              1
+ 5%            3              1
+10%            5              1       Obs               8,325
+25%           11              1       Sum of Wgt.       8,325
+
+50%           22                      Mean           21.96432
+                        Largest       Std. Dev.      12.50423
+75%           33             44
+90%           39             44       Variance       156.3559
+95%           42             44       Skewness       .0247618
+99%           43             44       Kurtosis       1.798397
+
+. 
+. * tcohort = quarter -- cohort fixed effect (absorbs aggregate time trends
+. * within each matched pair, removing cross-cohort confounds)
+. egen double tcohort = group(cohort timecode)
+
+. 
+. save "$inter/Matched Sample_v2.dta", replace
+file C:\Users\cf8745\Box\Research\Rating Agency Paper - Final\ReplicationPackage/Data/Intermedia
+> te/Matched Sample_v2.dta saved
+
+. 
+. * Same for 1-match-no-replacement sample
+. use "$inter/Master_v1.dta", clear
+
+. rename gvkey gvkey_control
+
+. joinby gvkey_control using "$inter/match3_1norep.dta", unmatched(both)
+
+. keep if _merge == 3
+(161,741 observations deleted)
+
+. replace gvkey_treat = gvkey_control if gvkey_treat == ""
+(0 real changes made)
+
+. egen double cohort  = group(gvkey_treat)
+
+. drop gvkey_treat
+
+. rename gvkey_control gvkey
+
+. egen double tcohort = group(cohort timecode)
+
+. 
+. save "$inter/Matched Sample_v2_1norep.dta", replace
+file C:\Users\cf8745\Box\Research\Rating Agency Paper - Final\ReplicationPackage/Data/Intermedia
+> te/Matched Sample_v2_1norep.dta saved
+
+. 
+. * Master_v2: full panel + matched sample indicator (matched == 1 for matched obs)
+. use "$inter/Master_v1.dta", clear
+
+. gen matched = 0
+
+. append using "$inter/Matched Sample_v2.dta"
+(label ffi10 already defined)
+(label ffi already defined)
+
+. replace matched = 1 if missing(matched)
+(8,325 real changes made)
+
+. save "$proc/MainPanel.dta", replace
+file C:\Users\cf8745\Box\Research\Rating Agency Paper - Final\ReplicationPackage/Data/Processed/
+> MainPanel.dta saved
+
+. 
+. * Master_v2_1norep: same but with 1-match-no-replacement matched sample
+. use "$inter/Master_v1.dta", clear
+
+. gen matched = 0
+
+. append using "$inter/Matched Sample_v2_1norep.dta"
+(label ffi10 already defined)
+(label ffi already defined)
+
+. replace matched = 1 if missing(matched)
+(3,435 real changes made)
+
+. save "$proc/MainPanel_1norep.dta", replace
+file C:\Users\cf8745\Box\Research\Rating Agency Paper - Final\ReplicationPackage/Data/Processed/
+> MainPanel_1norep.dta saved
+
+. 
+. 
+. ********************************************************************************
+. * SECTION 9: EVENT STUDY -- EQUITY CARs AND CREDIT SPREAD CARs
+. *
+. * Computes cumulative abnormal returns (CARs) and credit spread changes around
+. * the July 31, 2013 announcement date.
+. * Saves CAR_v2.dta and Matched Sample_vCS.dta for use in Regressions_clean.do.
+. ********************************************************************************
+. 
+. *---- 9a. Equity CARs ------------------------------------------------------------------------
+> --------------------------------------------
+. 
+. use "$crsp/Crsp Daily_v1.dta", clear
+
+. 
+. gen month = month(date)
+
+. gen year  = year(date)
+
+. gen day   = day(date)
+
+. 
+. gen excret = ret - vwretd       // market-adjusted excess return
+(16,734 missing values generated)
+
+. 
+. sort cusip date
+
+. 
+. * CAR windows: [-1,+1], [-1,+3], [-1,+5], [-1,+10]
+. by cusip: gen car  = excret + excret[_n-1] + excret[_n+1]
+(31,211 missing values generated)
+
+. by cusip: gen car2 = excret + excret[_n-1] + excret[_n+1] + excret[_n+2] + excret[_n+3]
+(45,645 missing values generated)
+
+. by cusip: gen car3 = excret + excret[_n-1] + excret[_n+1] + excret[_n+2] + excret[_n+3] + excr
+> et[_n+4] + excret[_n+5]
+(60,057 missing values generated)
+
+. by cusip: gen car4 = excret + excret[_n-1] + excret[_n+1] + excret[_n+2] + excret[_n+3] + excr
+> et[_n+4] + excret[_n+5] + excret[_n+6] + excret[_n+7] + excret[_n+8] + excret[_n+9] + excret[_
+> n+10]
+(96,019 missing values generated)
+
+. 
+. gen stockret = (1+excret) * (1+excret[_n-1]) * (1+excret[_n+1]) * (1+excret[_n+2]) * (1+excret
+> [_n+3]) - 1
+(20,363 missing values generated)
+
+. 
+. * Pre- and post-event drift windows (used in extended event study plots)
+. forvalues i = 2/30 {
+  2.     by cusip: gen prepcar`i' = excret[_n-`i']
+  3. }
+(30,759 missing values generated)
+(37,913 missing values generated)
+(45,067 missing values generated)
+(52,220 missing values generated)
+(59,370 missing values generated)
+(66,522 missing values generated)
+(73,672 missing values generated)
+(80,809 missing values generated)
+(87,949 missing values generated)
+(95,086 missing values generated)
+(102,216 missing values generated)
+(109,340 missing values generated)
+(116,462 missing values generated)
+(123,581 missing values generated)
+(130,696 missing values generated)
+(137,810 missing values generated)
+(144,921 missing values generated)
+(152,030 missing values generated)
+(159,135 missing values generated)
+(166,238 missing values generated)
+(173,338 missing values generated)
+(180,436 missing values generated)
+(187,533 missing values generated)
+(194,628 missing values generated)
+(201,716 missing values generated)
+(208,801 missing values generated)
+(215,880 missing values generated)
+(222,953 missing values generated)
+(230,025 missing values generated)
+
+. egen prepcar = rowtotal(prepcar2 - prepcar30)
+
+. 
+. forvalues i = 4/30 {
+  2.     by cusip: gen postpcar`i' = excret[_n+`i']
+  3. }
+(44,777 missing values generated)
+(51,914 missing values generated)
+(59,052 missing values generated)
+(66,191 missing values generated)
+(73,327 missing values generated)
+(80,459 missing values generated)
+(87,585 missing values generated)
+(94,712 missing values generated)
+(101,838 missing values generated)
+(108,960 missing values generated)
+(116,072 missing values generated)
+(123,180 missing values generated)
+(130,288 missing values generated)
+(137,395 missing values generated)
+(144,502 missing values generated)
+(151,606 missing values generated)
+(158,707 missing values generated)
+(165,803 missing values generated)
+(172,894 missing values generated)
+(179,985 missing values generated)
+(187,075 missing values generated)
+(194,161 missing values generated)
+(201,246 missing values generated)
+(208,324 missing values generated)
+(215,395 missing values generated)
+(222,463 missing values generated)
+(229,529 missing values generated)
+
+. egen postpcar    = rowtotal(postpcar6 - postpcar30)
+
+. egen postpcar430 = rowtotal(postpcar4 - postpcar30)
+
+. 
+. gen car5 = postpcar + car3
+(60,057 missing values generated)
+
+. 
+. by cusip: gen mktret  = vwretd + vwretd[_n-1] + vwretd[_n+1]
+(14,432 missing values generated)
+
+. by cusip: gen mktret2 = vwretd + vwretd[_n-1] + vwretd[_n+1] + vwretd[_n+2] + vwretd[_n+3]
+(28,860 missing values generated)
+
+. 
+. * Keep only the event date (July 31, 2013)
+. keep if day == 31 & month == 7 & year == 2013
+(1,695,380 observations deleted)
+
+. 
+. * Manual CUSIP corrections for firms with mismatched identifiers
+. replace cusip = "01381710" if ticker == "AA"
+(1 real change made)
+
+. replace cusip = "17187110" if ticker == "CBB"
+(1 real change made)
+
+. replace cusip = "40537Q50" if ticker == "HK"
+(1 real change made)
+
+. replace cusip = "86164230" if ticker == "SGY"
+(1 real change made)
+
+. replace cusip = "86853610" if ticker == "SVU"
+(1 real change made)
+
+. replace cusip = "06985P10" if ticker == "BAS"
+(1 real change made)
+
+. replace cusip = "23108210" if ticker == "CMLS"
+(1 real change made)
+
+. replace cusip = "20854P10" if ticker == "CNX"
+(1 real change made)
+
+. replace cusip = "49291410" if ticker == "KEG"
+(1 real change made)
+
+. replace cusip = "62913F50" if ticker == "NIHD"
+(1 real change made)
+
+. replace cusip = "75040P40" if ticker == "ROIAK"
+(1 real change made)
+
+. replace cusip = "25786710" if ticker == "RRD"
+(1 real change made)
+
+. 
+. save "$inter/CAR_v1.dta", replace
+file C:\Users\cf8745\Box\Research\Rating Agency Paper - Final\ReplicationPackage/Data/Intermedia
+> te/CAR_v1.dta saved
+
+. 
+. * Remove duplicates (keep one observation per ticker)
+. use "$inter/CAR_v1.dta", clear
+
+. drop if missing(ticker)
+(61 observations deleted)
+
+. duplicates tag ticker, gen(dup)
+
+Duplicates in terms of ticker
+
+. drop if dup > 0
+(46 observations deleted)
+
+. drop dup
+
+. save "$inter/CAR_vTicker.dta", replace
+file C:\Users\cf8745\Box\Research\Rating Agency Paper - Final\ReplicationPackage/Data/Intermedia
+> te/CAR_vTicker.dta saved
+
+. 
+. * Merge CARs onto Master_v2 (treatment quarter cross-section)
+. use "$proc/MainPanel.dta", clear
+
+. keep if treatmentq == 1
+(168,296 observations deleted)
+
+. drop _merge
+
+. ren tic ticker
+
+. gen tsymbol = ticker
+
+. replace cusip = substr(cusip, 1, 8)
+(5,204 real changes made)
+
+. 
+. merge m:1 cusip using "$inter/CAR_v1.dta"
+(note: variable tsymbol was str7, now str10 to accommodate using data's values)
+
+    Result                           # of obs.
+    -----------------------------------------
+    not matched                         6,251
+        from master                     2,250  (_merge==1)
+        from using                      4,001  (_merge==2)
+
+    matched                             2,954  (_merge==3)
+    -----------------------------------------
+
+. drop if _merge == 2
+(4,001 observations deleted)
+
+. drop _merge
+
+. 
+. save "$proc/EquityCAR.dta", replace
+file C:\Users\cf8745\Box\Research\Rating Agency Paper - Final\ReplicationPackage/Data/Processed/
+> EquityCAR.dta saved
+
+. 
+. 
+. *---- 9b. Credit spread CARs -----------------------------------------------------------------
+> -------------------------------------
+. 
+. * Match on credit spread level to control for pre-event spread difference
+. * between treated and control firms.
+. 
+. use "$proc/MainPanel.dta", clear
+
+. keep if treatmentq == 1
+(168,296 observations deleted)
+
+. keep if TMJunk == 1 | SPJunk == 1
+(4,430 observations deleted)
+
+. drop month year _merge
+
+. 
+. merge m:1 sixdigitcusip using "$icebaml/BAMLCAR_v1.dta"
+(note: variable date was long, now double to accommodate using data's values)
+
+    Result                           # of obs.
+    -----------------------------------------
+    not matched                         1,053
+        from master                       442  (_merge==1)
+        from using                        611  (_merge==2)
+
+    matched                               332  (_merge==3)
+    -----------------------------------------
+
+. drop if _merge == 2
+(611 observations deleted)
+
+. drop _merge
+
+. save "$proc/BondCAR.dta", replace
+file C:\Users\cf8745\Box\Research\Rating Agency Paper - Final\ReplicationPackage/Data/Processed/
+> BondCAR.dta saved
+
+. 
+. use "$proc/BondCAR.dta", clear
+
+. drop if matched == 1
+(208 observations deleted)
+
+. keep if treatmentq == 1 & TMJunk == 1
+(91 observations deleted)
+
+. 
+. * Drop if any matching covariate missing
+. foreach v of varlist prof_win tang_win sales_win mk2bk_win MJuly w2car {
+  2.     drop if missing(`v')
+  3. }
+(6 observations deleted)
+(3 observations deleted)
+(0 observations deleted)
+(8 observations deleted)
+(0 observations deleted)
+(240 observations deleted)
+
+. 
+. sort gvkey
+
+. 
+. * Mahapick: match also on log credit spread level (lwOAS)
+. * This ensures the parallel-trends assumption holds in OAS space
+. cd "$inter"
+C:\Users\cf8745\Box\Research\Rating Agency Paper - Final\ReplicationPackage\Data\Intermediate
+
+. mahapick MJuly lev_growth_win mk2bk_win lwOAS, idvar(gvkey) treated(treated) genfile(matchcs) 
+> nummatches(4) replace matchon(industry) sliceby(industry)
+file matchcs opened for posting
+mahapick called; num treated: 22
+sliceby = industry
+file C:\Temp\ST_0l000003.tmp saved
+numslices = 38
+
+---- sliceby has been specified
+
+ processing slice 1; N=5; treated=1
+mahapicksome called; refobs= 1; id (gvkey) = 170527
+file C:\Temp\ST_0l000004.tmp saved
+
+ processing slice 2; N=1; treated=0
+file C:\Temp\ST_0l000005.tmp saved
+
+ processing slice 3; N=9; treated=0
+file C:\Temp\ST_0l000006.tmp saved
+
+ processing slice 4; N=4; treated=0
+file C:\Temp\ST_0l000007.tmp saved
+
+ processing slice 5; N=2; treated=0
+file C:\Temp\ST_0l000008.tmp saved
+
+ processing slice 6; N=2; treated=0
+file C:\Temp\ST_0l000009.tmp saved
+
+ processing slice 7; N=13; treated=1
+mahapicksome called; refobs= 1; id (gvkey) = 012589
+file C:\Temp\ST_0l00000a.tmp saved
+
+ processing slice 8; N=1; treated=0
+file C:\Temp\ST_0l00000b.tmp saved
+
+ processing slice 9; N=2; treated=1
+mahapicksome called; refobs= 1; id (gvkey) = 146156
+file C:\Temp\ST_0l00000c.tmp saved
+
+ processing slice 10; N=7; treated=0
+file C:\Temp\ST_0l00000d.tmp saved
+
+ processing slice 11; N=2; treated=0
+file C:\Temp\ST_0l00000e.tmp saved
+
+ processing slice 12; N=2; treated=0
+file C:\Temp\ST_0l00000f.tmp saved
+
+ processing slice 13; N=6; treated=0
+file C:\Temp\ST_0l00000g.tmp saved
+
+ processing slice 14; N=9; treated=1
+mahapicksome called; refobs= 1; id (gvkey) = 012615
+file C:\Temp\ST_0l00000h.tmp saved
+
+ processing slice 15; N=7; treated=1
+mahapicksome called; refobs= 1; id (gvkey) = 025405
+file C:\Temp\ST_0l00000i.tmp saved
+
+ processing slice 16; N=9; treated=0
+file C:\Temp\ST_0l00000j.tmp saved
+
+ processing slice 17; N=7; treated=2
+mahapicksome called; refobs= 1; id (gvkey) = 003734
+mahapicksome called; refobs= 2; id (gvkey) = 006081
+file C:\Temp\ST_0l00000k.tmp saved
+
+ processing slice 18; N=2; treated=0
+file C:\Temp\ST_0l00000l.tmp saved
+
+ processing slice 19; N=1; treated=0
+file C:\Temp\ST_0l00000m.tmp saved
+
+ processing slice 20; N=1; treated=1
+mahapicksome called; refobs= 1; id (gvkey) = 005560
+no non-treated non-ref obs; no matches to be made
+file C:\Temp\ST_0l00000n.tmp saved
+
+ processing slice 21; N=2; treated=0
+file C:\Temp\ST_0l00000o.tmp saved
+
+ processing slice 22; N=6; treated=0
+file C:\Temp\ST_0l00000p.tmp saved
+
+ processing slice 23; N=42; treated=8
+mahapicksome called; refobs= 1; id (gvkey) = 008387
+mahapicksome called; refobs= 2; id (gvkey) = 008440
+mahapicksome called; refobs= 3; id (gvkey) = 025874
+mahapicksome called; refobs= 4; id (gvkey) = 027786
+mahapicksome called; refobs= 5; id (gvkey) = 066029
+mahapicksome called; refobs= 6; id (gvkey) = 176899
+mahapicksome called; refobs= 7; id (gvkey) = 180145
+mahapicksome called; refobs= 8; id (gvkey) = 188663
+Warning: distance measure missing for 4 candidates
+file C:\Temp\ST_0l00000q.tmp saved
+
+ processing slice 24; N=2; treated=2
+mahapicksome called; refobs= 1; id (gvkey) = 008807
+no non-treated non-ref obs; no matches to be made
+mahapicksome called; refobs= 2; id (gvkey) = 135990
+no non-treated non-ref obs; no matches to be made
+file C:\Temp\ST_0l00000r.tmp saved
+
+ processing slice 25; N=12; treated=1
+mahapicksome called; refobs= 1; id (gvkey) = 003036
+file C:\Temp\ST_0l00000s.tmp saved
+
+ processing slice 26; N=2; treated=0
+file C:\Temp\ST_0l00000t.tmp saved
+
+ processing slice 27; N=9; treated=0
+file C:\Temp\ST_0l00000u.tmp saved
+
+ processing slice 28; N=2; treated=0
+file C:\Temp\ST_0l00000v.tmp saved
+
+ processing slice 29; N=6; treated=1
+mahapicksome called; refobs= 1; id (gvkey) = 061685
+file C:\Temp\ST_0l00000w.tmp saved
+
+ processing slice 30; N=3; treated=0
+file C:\Temp\ST_0l00000x.tmp saved
+
+ processing slice 31; N=1; treated=0
+file C:\Temp\ST_0l000010.tmp saved
+
+ processing slice 32; N=8; treated=0
+file C:\Temp\ST_0l000011.tmp saved
+
+ processing slice 33; N=4; treated=0
+file C:\Temp\ST_0l000012.tmp saved
+
+ processing slice 34; N=7; treated=0
+file C:\Temp\ST_0l000013.tmp saved
+
+ processing slice 35; N=6; treated=1
+mahapicksome called; refobs= 1; id (gvkey) = 011017
+file C:\Temp\ST_0l000014.tmp saved
+
+ processing slice 36; N=8; treated=1
+mahapicksome called; refobs= 1; id (gvkey) = 009155
+file C:\Temp\ST_0l000015.tmp saved
+
+ processing slice 37; N=2; treated=0
+file C:\Temp\ST_0l000016.tmp saved
+
+ processing slice 38; N=4; treated=0
+file C:\Temp\ST_0l000017.tmp saved
+(label ffi10 already defined)
+(label ffi already defined)
+(label ffi10 already defined)
+(label ffi already defined)
+(label ffi10 already defined)
+(label ffi already defined)
+(label ffi10 already defined)
+(label ffi already defined)
+(label ffi10 already defined)
+(label ffi already defined)
+(label ffi10 already defined)
+(label ffi already defined)
+(label ffi10 already defined)
+(label ffi already defined)
+(label ffi10 already defined)
+(label ffi already defined)
+(label ffi10 already defined)
+(label ffi already defined)
+(label ffi10 already defined)
+(label ffi already defined)
+(label ffi10 already defined)
+(label ffi already defined)
+(label ffi10 already defined)
+(label ffi already defined)
+(label ffi10 already defined)
+(label ffi already defined)
+(label ffi10 already defined)
+(label ffi already defined)
+(label ffi10 already defined)
+(label ffi already defined)
+(label ffi10 already defined)
+(label ffi already defined)
+(label ffi10 already defined)
+(label ffi already defined)
+(label ffi10 already defined)
+(label ffi already defined)
+(label ffi10 already defined)
+(label ffi already defined)
+(label ffi10 already defined)
+(label ffi already defined)
+(label ffi10 already defined)
+(label ffi already defined)
+(label ffi10 already defined)
+(label ffi already defined)
+(label ffi10 already defined)
+(label ffi already defined)
+(label ffi10 already defined)
+(label ffi already defined)
+(label ffi10 already defined)
+(label ffi already defined)
+(label ffi10 already defined)
+(label ffi already defined)
+(label ffi10 already defined)
+(label ffi already defined)
+(label ffi10 already defined)
+(label ffi already defined)
+(label ffi10 already defined)
+(label ffi already defined)
+(label ffi10 already defined)
+(label ffi already defined)
+(label ffi10 already defined)
+(label ffi already defined)
+(label ffi10 already defined)
+(label ffi already defined)
+(label ffi10 already defined)
+(label ffi already defined)
+(label ffi10 already defined)
+(label ffi already defined)
+(label ffi10 already defined)
+(label ffi already defined)
+(label ffi10 already defined)
+(label ffi already defined)
+(label ffi10 already defined)
+(label ffi already defined)
+file matchcs closed
+
+. 
+. use "$inter/matchcs.dta", clear
+
+. rename gvkey       gvkey_control
+
+. rename _prime_id   gvkey_treat
+
+. drop _matchnum
+
+. sort gvkey_control
+
+. save "$inter/matchcs2.dta", replace
+file C:\Users\cf8745\Box\Research\Rating Agency Paper - Final\ReplicationPackage/Data/Intermedia
+> te/matchcs2.dta saved
+
+. 
+. use "$inter/Master_v1.dta", clear
+
+. rename gvkey gvkey_control
+
+. joinby gvkey_control using "$inter/matchcs2.dta", unmatched(both)
+
+. keep if _merge == 3
+(162,333 observations deleted)
+
+. replace gvkey_treat = gvkey_control if gvkey_treat == ""
+(0 real changes made)
+
+. egen double cohort  = group(gvkey_treat)
+
+. drop gvkey_treat
+
+. rename gvkey_control gvkey
+
+. sum cohort, detail
+
+                     group(gvkey_treat)
+-------------------------------------------------------------
+      Percentiles      Smallest
+ 1%            1              1
+ 5%            1              1
+10%            2              1       Obs               3,543
+25%            5              1       Sum of Wgt.       3,543
+
+50%            9                      Mean           9.381033
+                        Largest       Std. Dev.      5.232095
+75%           14             19
+90%           17             19       Variance       27.37482
+95%           18             19       Skewness        .076065
+99%           18             19       Kurtosis       1.834211
+
+. egen double tcohort = group(cohort timecode)
+
+. 
+. keep if treatmentq == 1
+(3,455 observations deleted)
+
+. drop _merge
+
+. 
+. merge m:1 sixdigitcusip using "$icebaml/BAMLCAR_v1.dta"
+(note: variable date was long, now double to accommodate using data's values)
+
+    Result                           # of obs.
+    -----------------------------------------
+    not matched                           766
+        from master                         0  (_merge==1)
+        from using                        766  (_merge==2)
+
+    matched                                88  (_merge==3)
+    -----------------------------------------
+
+. drop if _merge == 2
+(766 observations deleted)
+
+. drop _merge
+
+. 
+. * Express credit spread CARs as a fraction of pre-event OAS level
+. foreach x of varlist w2car w2car2 w2car3 w2car4 {
+  2.     gen `x'perc = `x' / lwOAS
+  3. }
+
+. gen w2car0perc = w2car0 / (lwOAS - w2car0)
+(5 missing values generated)
+
+. 
+. save "$proc/BondCAR_Matched.dta", replace
+file C:\Users\cf8745\Box\Research\Rating Agency Paper - Final\ReplicationPackage/Data/Processed/
+> BondCAR_Matched.dta saved
+
+. 
+. 
+. ********************************************************************************
+. * SECTION 10: FINANCIAL CONSTRAINT INDICES
+. * Whited-Wu (WW), Kaplan-Zingales (KZ), and Size-Age (SA) indices
+. * computed from Compustat quarterly data and merged back into MainPanel.dta.
+. ********************************************************************************
+. 
+. use "$proc/MainPanel.dta", clear
+
+. 
+. * Compute on matched==0 deduplicated subset (one unique row per companycode+datadate)
+. sort companycode datadate
+
+. keep if matched == 0
+(8,325 observations deleted)
+
+. capture drop tcohort cohort _merge matched
+
+. duplicates drop
+
+Duplicates in terms of all variables
+
+(0 observations are duplicates)
+
+. 
+. 
+. * 1. Whited-Wu (WW) Index — Whited & Wu (2006)
+. * WW = -0.091*CF - 0.062*DIVPOS + 0.021*TLTD - 0.044*LNTA + 0.102*ISG - 0.035*SG
+. 
+. gen cf = (ibq + dpq) / atq
+(15,657 missing values generated)
+
+. 
+. replace cdvcy = 0 if missing(cdvcy)
+(155,647 real changes made)
+
+. replace pdvcy = 0 if missing(pdvcy)
+(157,180 real changes made)
+
+. gen divpos = (cdvcy + pdvcy > 0) if !missing(atq)
+(10,517 missing values generated)
+
+. 
+. replace dlttq = 0 if missing(dlttq)
+(0 real changes made)
+
+. gen tltd = dlttq / atq
+(11,182 missing values generated)
+
+. gen lnta = log(atq)
+(11,186 missing values generated)
+
+. 
+. by companycode: gen sg = (saleq - saleq[_n-4]) / abs(saleq[_n-4])
+(36,553 missing values generated)
+
+. 
+. tostring sic, gen(sic_str) format("%04.0f")
+sic_str generated as str4
+
+. gen sic3 = substr(sic_str, 1, 3)
+
+. bysort sic3 fyearq fqtr: egen isg = mean(sg)
+(8569 missing values generated)
+
+. 
+. gen WW = -0.091*cf - 0.062*divpos + 0.021*tltd - 0.044*lnta + 0.102*isg - 0.035*sg
+(41,164 missing values generated)
+
+. 
+. 
+. * 2. Kaplan-Zingales (KZ) Index — Lamont, Polk & Saá-Requejo (2001)
+. * KZ = -1.002*CF + 0.283*Q + 3.139*LEV - 39.368*DIV - 1.315*CASH
+. 
+. sort companycode datadate
+
+. 
+. by companycode: gen ppentq_lag = ppentq[_n-1]
+(15,709 missing values generated)
+
+. gen kz_cf = (ibq + dpq) / ppentq_lag
+(25,382 missing values generated)
+
+. 
+. gen be = seqq
+(10,847 missing values generated)
+
+. replace be = atq - ltq if missing(seqq)
+(0 real changes made)
+
+. gen mve = cshoq * prccq
+(24,477 missing values generated)
+
+. gen kz_q = (atq - be + mve) / atq
+(25,317 missing values generated)
+
+. 
+. replace dlcq = 0 if missing(dlcq)
+(0 real changes made)
+
+. replace dlttq = 0 if missing(dlttq)
+(0 real changes made)
+
+. gen total_debt = dlcq + dlttq
+
+. gen kz_lev = total_debt / (total_debt + seqq)
+(10,893 missing values generated)
+
+. 
+. gen kz_div = (cdvcy + pdvcy) / ppentq_lag
+(20,909 missing values generated)
+
+. gen kz_cash = cheq / ppentq_lag
+(23,096 missing values generated)
+
+. 
+. gen KZ = -1.002*kz_cf + 0.283*kz_q + 3.139*kz_lev - 39.368*kz_div - 1.315*kz_cash
+(36,711 missing values generated)
+
+. 
+. 
+. * 3. Size-Age (SA) Index — Hadlock & Pierce (2010)
+. * SA = -0.737*SIZE + 0.043*SIZE^2 - 0.040*AGE
+. 
+. by companycode: egen first_date = min(datadate)
+
+. gen age_quarters = (datadate - first_date) / 91.25
+
+. gen age = age_quarters / 4
+
+. replace age = 37 if age > 37 & !missing(age)
+(0 real changes made)
+
+. 
+. winsor2 size, cuts(10 90) replace
+
+. 
+. gen SA = -0.737*size + 0.043*(size^2) - 0.040*age
+(11,186 missing values generated)
+
+. 
+. 
+. * Clean up and winsorize
+. drop if missing(atq) | atq <= 0
+(11,186 observations deleted)
+
+. replace KZ = . if missing(ppentq_lag) | ppentq_lag < 1
+(19,778 real changes made, 19,778 to missing)
+
+. 
+. winsor2 WW KZ SA, cuts(1 99) suffix(_w)
+
+. 
+. label var WW   "Whited-Wu Index (2006)"
+
+. label var KZ   "Kaplan-Zingales Index (Lamont et al. 2001)"
+
+. label var SA   "Size-Age Index (Hadlock & Pierce 2010)"
+
+. label var WW_w "Whited-Wu Index (winsorized)"
+
+. label var KZ_w "Kaplan-Zingales Index (winsorized)"
+
+. label var SA_w "Size-Age Index (winsorized)"
+
+. 
+. * Keep only merge keys and the new index variables, then merge back into MainPanel
+. keep companycode datadate WW WW_w KZ KZ_w SA SA_w
+
+. save "$inter/fin_constr.dta", replace
+file C:\Users\cf8745\Box\Research\Rating Agency Paper - Final\ReplicationPackage/Data/Intermedia
+> te/fin_constr.dta saved
+
+. 
+. use "$proc/MainPanel.dta", clear
+
+. capture drop _merge
+
+. sort companycode datadate
+
+. merge m:1 companycode datadate using "$inter/fin_constr.dta"
+
+    Result                           # of obs.
+    -----------------------------------------
+    not matched                        11,398
+        from master                    11,398  (_merge==1)
+        from using                          0  (_merge==2)
+
+    matched                           162,102  (_merge==3)
+    -----------------------------------------
+
+. drop _merge
+
+. save "$proc/MainPanel.dta", replace
+file C:\Users\cf8745\Box\Research\Rating Agency Paper - Final\ReplicationPackage/Data/Processed/
+> MainPanel.dta saved
+
+. 
+. 
+. * ==============================================================================
+. * SECTION 10: MARKET DATA FOR TABLE A.15
+. * ==============================================================================
+. * Source files (included in Data/Raw/Market/):
+. *   SP500.csv  -- S&P 500 daily closes, Jun-Sep 2013 (Yahoo Finance via ^GSPC)
+. *   TNX.csv    -- 10Y Treasury yield, Jun-Sep 2013 (Yahoo Finance via ^TNX)
+. *
+. * To refresh the raw files, run Code/download_market_data.py (requires Python).
+. * The included CSVs are static 2013 data and do not need to be re-downloaded
+. * for replication.
+. * ------------------------------------------------------------------------------
+. 
+. * S&P 500 (Yahoo Finance ^GSPC)
+. import delimited "$raw/Market/SP500.csv", clear varnames(1) case(lower)
+(2 vars, 84 obs)
+
+. gen date = date(observation_date, "YMD")
+
+. format date %td
+
+. drop observation_date
+
+. rename sp500 sp500_close
+
+. drop if missing(sp500_close)
+(0 observations deleted)
+
+. sort date
+
+. save "$proc/SP500.dta", replace
+file C:\Users\cf8745\Box\Research\Rating Agency Paper - Final\ReplicationPackage/Data/Processed/
+> SP500.dta saved
+
+. 
+. * 10Y Treasury yield (Yahoo Finance ^TNX)
+. import delimited "$raw/Market/TNX.csv", clear varnames(1) case(lower)
+(2 vars, 84 obs)
+
+. gen date = date(observation_date, "YMD")
+
+. format date %td
+
+. drop observation_date
+
+. destring tnx, replace force
+tnx already numeric; no replace
+
+. rename tnx tnx_yield
+
+. drop if missing(tnx_yield)
+(0 observations deleted)
+
+. sort date
+
+. save "$proc/TNX.dta", replace
+(note: file C:\Users\cf8745\Box\Research\Rating Agency Paper - Final\ReplicationPackage/Data/Pro
+> cessed/TNX.dta not found)
+file C:\Users\cf8745\Box\Research\Rating Agency Paper - Final\ReplicationPackage/Data/Processed/
+> TNX.dta saved
+
+. 
+. ********************************************************************************
+. * END OF MASTER_CLEAN.DO
+. * Final output files (Data/Processed/ -- read by Regressions_clean.do):
+. *   MainPanel.dta            -- full panel (all firms, all quarters); includes WW/KZ/SA
+. *   Master_v2.dta            -- main matched sample (4 matches with replacement)
+. *   Master_v2_1norep.dta     -- robustness matched sample (1 match without replacement)
+. *   CAR_v2.dta               -- equity event study
+. *   BAMLCAR_v2.dta           -- credit spread event study (unmatched)
+. *   Matched Sample_vCS.dta   -- credit spread event study (matched)
+. *   BondCAR_Matched.dta      -- credit spread matched event study (intermediate)
+. *   SP500.dta                -- S&P 500 daily closes (for Table A.15)
+. *   TNX.dta                  -- 10Y Treasury yields (for Table A.15)
+. ********************************************************************************
+. 
+. log close
+      name:  <unnamed>
+       log:  C:\Users\cf8745\Box\Research\Rating Agency Paper - Final\ReplicationPackage/Code/Ma
+> ster_clean.log
+  log type:  text
+ closed on:   5 May 2026, 04:56:25
+------------------------------------------------------------------------------------------------

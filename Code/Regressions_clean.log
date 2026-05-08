@@ -1,0 +1,393 @@
+
+  ___  ____  ____  ____  ____ (R)
+ /__    /   ____/   /   ____/
+___/   /   /___/   /   /___/   14.2   Copyright 1985-2015 StataCorp LLC
+  Statistics/Data Analysis            StataCorp
+                                      4905 Lakeway Drive
+     MP - Parallel Edition            College Station, Texas 77845 USA
+                                      800-STATA-PC        http://www.stata.com
+                                      979-696-4600        stata@stata.com
+                                      979-696-4601 (fax)
+
+Single-user 6-core Stata perpetual license:
+       Serial number:  501406233476
+         Licensed to:  Cesare Fracassi
+                       UT Austin
+
+Notes:
+      1.  Stata is running in batch mode.
+      2.  Unicode is supported; see help unicode_advice.
+      3.  More than 2 billion observations are allowed; see help obs_advice.
+      4.  Maximum number of variables is set to 5000; see help set_maxvar.
+
+. do Regressions_clean.do 
+
+. * ===========================================================================
+> ===
+. * Regressions_clean.do
+. * "What's in a Debt? Rating Agency Methodologies and Firms' Financing and
+. *  Investment Decisions" -- Fracassi & Weitzner
+. *
+. * Produces all tables and figures in the paper and online appendix.
+. * Run AFTER Master_clean.do has created the processed datasets.
+. * ===========================================================================
+> ===
+. 
+. 
+. * ===========================================================================
+> ===
+. * 0. SETUP
+. * ===========================================================================
+> ===
+. 
+. * Change this one line to match your machine; all other paths follow.
+. global root "C:\Users\cf8745\Box\Research\Rating Agency Paper - Final\Replica
+> tionPackage"
+
+. 
+. global proc    "$root/Data/Processed"
+
+. global tables  "$root/Output/Tables"
+
+. global figures "$root/Output/Figures"
+
+. 
+. global controls  "prof_win tang_win sales_win mk2bk_win"
+
+. global controls2 "prof_win0 tang_win0 sales_win0 mk2bk_win0"
+
+. 
+. use "$proc/MainPanel.dta", clear
+
+. 
+. * Generate billion-dollar scaled variables needed for summary statistics
+. foreach x of varlist dlttq dlcq ppentq saleq atq {
+  2.     gen `x'bn = `x'/1000
+  3. }
+(10,987 missing values generated)
+(5,434 missing values generated)
+(10,729 missing values generated)
+
+. 
+. 
+. * ===========================================================================
+> ===
+. * SECTION 2: DATA AND SAMPLE
+. * ===========================================================================
+> ===
+. 
+. * Table 1: Summary Statistics
+. 
+. ***Not in logs
+. eststo clear
+
+. eststo treated:   quietly estpost summarize prefbn changeratinglev bl_1 dlttq
+> bn dlcqbn me2 mk2bk_win MJuly SPRated SJuly ppentqbn prof_win tang_win saleqb
+> n atqbn if treated == 1 & TMJunk ==1 & treatmentq ==1 & matched == 0, detail
+
+. eststo untreated: quietly estpost summarize prefbn changeratinglev bl_1 dlttq
+> bn dlcqbn me2 mk2bk_win MJuly SPRated SJuly ppentqbn prof_win tang_win saleqb
+> n atqbn  if treated == 0 & TMJunk ==1 & treatmentq ==1  & matched == 0, detai
+> l
+
+. eststo diff:      quietly estpost ttest prefbn changeratinglev bl_1 dlttqbn d
+> lcqbn me2 mk2bk_win MJuly SPRated SJuly ppentqbn prof_win tang_win saleqbn at
+> qbn if TMJunk ==1 & treatmentq ==1  & matched == 0 , by(treated) unequal
+
+. eststo matched:   quietly estpost summarize prefbn changeratinglev bl_1 dlttq
+> bn dlcqbn me2 mk2bk_win MJuly SPRated SJuly ppentqbn prof_win tang_win saleqb
+> n atqbn  if treated == 0 & TMJunk ==1 & treatmentq ==1  & matched == 1, detai
+> l
+
+. eststo diff2:     quietly estpost ttest prefbn changeratinglev bl_1 dlttqbn d
+> lcqbn me2 mk2bk_win MJuly SPRated SJuly ppentqbn prof_win tang_win saleqbn at
+> qbn if TMJunk ==1 & treatmentq ==1  & matched == 1 , by(treated) unequal
+
+. esttab using "$tables/summarynolog.tex", cells("count(pattern(1 1 0 1 0) fmt(
+> 0) label(N)) mean(pattern(1 1 0 1 0) fmt(3) label(Mean)) p50(pattern(1 1 0 1 
+> 0) fmt(2) label(Median)) sd(pattern(1 1 0 1 0) fmt(3) label(SD)) b(star patte
+> rn(0 0 1 0 1) fmt(3) label(Diff w.r.t. Treated))") label rename( prefbn "Pref
+> erred Stock" dlttqbn "Long-Term Debt" dlcqbn "Short-Term Debt" ppentqbn "PPE"
+>  bl_1 "Book Leverage" me2 "Market Equity" mk2bk_win "Market to Book" MJuly "M
+> oodys Rating" SPRated "S\&P Rated" SJuly "S\&P Rating" prof_win "Profitabilit
+> y" tang_win "Tangibility" saleqbn "Sales" atqbn "Assets" prefqnorm "Preferred
+> /EV" changeratinglev "Preferred/Capital" Observations "N" ) replace star(* .1
+>  ** .05 *** .01)
+(output written to C:\Users\cf8745\Box\Research\Rating Agency Paper - Final\Rep
+> licationPackage/Output/Tables/summarynolog.tex)
+
+. 
+. ***All in One
+. eststo clear
+
+. eststo treated:   quietly estpost summarize prefbn changeratinglev bl_1 loglt
+> debt logstdebt me2 mk2bk_win MJuly SPRated SJuly ppe prof_win tang_win sales_
+> win size if treated == 1 & TMJunk ==1 & treatmentq ==1 & matched == 0, detail
+
+. eststo untreated: quietly estpost summarize prefbn changeratinglev bl_1 loglt
+> debt logstdebt me2 mk2bk_win MJuly SPRated SJuly ppe prof_win tang_win sales_
+> win size  if treated == 0 & TMJunk ==1 & treatmentq ==1  & matched == 0, deta
+> il
+
+. eststo diff:      quietly estpost ttest prefbn changeratinglev bl_1 logltdebt
+>  logstdebt me2 mk2bk_win MJuly SPRated SJuly ppe prof_win tang_win sales_win 
+> size if TMJunk ==1 & treatmentq ==1  & matched == 0 , by(treated) unequal
+
+. eststo matched:   quietly estpost summarize prefbn changeratinglev bl_1 loglt
+> debt logstdebt me2 mk2bk_win MJuly SPRated SJuly ppe prof_win tang_win sales_
+> win size  if treated == 0 & TMJunk ==1 & treatmentq ==1  & matched == 1, deta
+> il
+
+. eststo diff2:     quietly estpost ttest prefbn changeratinglev bl_1 logltdebt
+>  logstdebt me2 mk2bk_win MJuly SPRated SJuly ppe prof_win tang_win sales_win 
+> size if TMJunk ==1 & treatmentq ==1  & matched == 1 , by(treated) unequal
+
+. esttab using "$tables/summary.tex", cells("count(pattern(1 1 0 1 0) fmt(0) la
+> bel(N)) mean(pattern(1 1 0 1 0) fmt(3) label(Mean)) p50(pattern(1 1 0 1 0) fm
+> t(2) label(Median)) sd(pattern(1 1 0 1 0) fmt(3) label(SD)) b(star pattern(0 
+> 0 1 0 1) fmt(3) label(Diff w.r.t. Treated))") label rename( prefbn "Preferred
+>  Stock" logltdebt "Long-Term Debt" logstdebt "Short-Term Debt" ppe "PPE" bl_1
+>  "Book Leverage" me2 "Market Equity" mk2bk_win "Market to Book" MJuly "Moodys
+>  Rating" SPRated "S\&P Rated" SJuly "S\&P Rating" prof_win "Profitability" ta
+> ng_win "Tangibility" sales_win "Sales" size "Assets" prefqnorm "Preferred/EV"
+>  changeratinglev "Preferred/Capital" Observations "N" ) replace star(* .1 ** 
+> .05 *** .01)
+(output written to C:\Users\cf8745\Box\Research\Rating Agency Paper - Final\Rep
+> licationPackage/Output/Tables/summary.tex)
+
+. 
+. ***Joint balance test
+. foreach x of varlist bl_1 logltdebt logstdebt me2 mk2bk_win MJuly SPRated SJu
+> ly ppe prof_win tang_win sales_win size {
+  2. ttest `x' if TMJunk ==1 & treatmentq ==1  & matched == 1 , by(treated) une
+> qual
+  3. }
+
+Two-sample t test with unequal variances
+------------------------------------------------------------------------------
+   Group |     Obs        Mean    Std. Err.   Std. Dev.   [95% Conf. Interval]
+---------+--------------------------------------------------------------------
+       0 |     164    .5705504    .0163613    .2095269     .538243    .6028579
+       1 |      44    .5705337    .0350356    .2323999    .4998777    .6411897
+---------+--------------------------------------------------------------------
+combined |     208    .5705469    .0148371    .2139842    .5412956    .5997982
+---------+--------------------------------------------------------------------
+    diff |            .0000167    .0386676               -.0772541    .0772876
+------------------------------------------------------------------------------
+    diff = mean(0) - mean(1)                                      t =   0.0004
+Ho: diff = 0                     Satterthwaite's degrees of freedom =  63.0094
+
+    Ha: diff < 0                 Ha: diff != 0                 Ha: diff > 0
+ Pr(T < t) = 0.5002         Pr(|T| > |t|) = 0.9997          Pr(T > t) = 0.4998
+
+Two-sample t test with unequal variances
+------------------------------------------------------------------------------
+   Group |     Obs        Mean    Std. Err.   Std. Dev.   [95% Conf. Interval]
+---------+--------------------------------------------------------------------
+       0 |     163    6.940399    .0870714    1.111654    6.768457     7.11234
+       1 |      44    6.928942    .1977636    1.311815    6.530114     7.32777
+---------+--------------------------------------------------------------------
+combined |     207    6.937963    .0801886    1.153713    6.779868    7.096059
+---------+--------------------------------------------------------------------
+    diff |            .0114568     .216083               -.4206738    .4435874
+------------------------------------------------------------------------------
+    diff = mean(0) - mean(1)                                      t =   0.0530
+Ho: diff = 0                     Satterthwaite's degrees of freedom =  60.6814
+
+    Ha: diff < 0                 Ha: diff != 0                 Ha: diff > 0
+ Pr(T < t) = 0.5211         Pr(|T| > |t|) = 0.9579          Pr(T > t) = 0.4789
+
+Two-sample t test with unequal variances
+------------------------------------------------------------------------------
+   Group |     Obs        Mean    Std. Err.   Std. Dev.   [95% Conf. Interval]
+---------+--------------------------------------------------------------------
+       0 |     111    2.908599    .2673627    2.816841    2.378748    3.438449
+       1 |      33    3.462104    .3972063    2.281777    2.653021    4.271187
+---------+--------------------------------------------------------------------
+combined |     144    3.035444    .2255106    2.706127    2.589679    3.481209
+---------+--------------------------------------------------------------------
+    diff |           -.5535054    .4788065               -1.510101    .4030905
+------------------------------------------------------------------------------
+    diff = mean(0) - mean(1)                                      t =  -1.1560
+Ho: diff = 0                     Satterthwaite's degrees of freedom =  63.7582
+
+    Ha: diff < 0                 Ha: diff != 0                 Ha: diff > 0
+ Pr(T < t) = 0.1260         Pr(|T| > |t|) = 0.2520          Pr(T > t) = 0.8740
+
+Two-sample t test with unequal variances
+------------------------------------------------------------------------------
+   Group |     Obs        Mean    Std. Err.   Std. Dev.   [95% Conf. Interval]
+---------+--------------------------------------------------------------------
+       0 |     164    2.894166     .500321    6.407235     1.90622    3.882112
+       1 |      44    3.053362    1.080993    7.170497    .8733313    5.233392
+---------+--------------------------------------------------------------------
+combined |     208    2.927842    .4547366    6.558305    2.031333    3.824351
+---------+--------------------------------------------------------------------
+    diff |            -.159196    1.191162               -2.539813    2.221421
+------------------------------------------------------------------------------
+    diff = mean(0) - mean(1)                                      t =  -0.1336
+Ho: diff = 0                     Satterthwaite's degrees of freedom =  62.6375
+
+    Ha: diff < 0                 Ha: diff != 0                 Ha: diff > 0
+ Pr(T < t) = 0.4471         Pr(|T| > |t|) = 0.8941          Pr(T > t) = 0.5529
+
+Two-sample t test with unequal variances
+------------------------------------------------------------------------------
+   Group |     Obs        Mean    Std. Err.   Std. Dev.   [95% Conf. Interval]
+---------+--------------------------------------------------------------------
+       0 |     164    .9880665    .0207719    .2660101    .9470498    1.029083
+       1 |      44    .9295997    .0469292    .3112932    .8349579    1.024242
+---------+--------------------------------------------------------------------
+combined |     208    .9756985    .0191681     .276447    .9379087    1.013488
+---------+--------------------------------------------------------------------
+    diff |            .0584667    .0513208               -.0441595     .161093
+------------------------------------------------------------------------------
+    diff = mean(0) - mean(1)                                      t =   1.1392
+Ho: diff = 0                     Satterthwaite's degrees of freedom =  60.8826
+
+    Ha: diff < 0                 Ha: diff != 0                 Ha: diff > 0
+ Pr(T < t) = 0.8705         Pr(|T| > |t|) = 0.2591          Pr(T > t) = 0.1295
+
+Two-sample t test with unequal variances
+------------------------------------------------------------------------------
+   Group |     Obs        Mean    Std. Err.   Std. Dev.   [95% Conf. Interval]
+---------+--------------------------------------------------------------------
+       0 |     164    14.81707    .1365596    1.748816    14.54742    15.08673
+       1 |      44    15.22727    .3133122    2.078278    14.59542    15.85913
+---------+--------------------------------------------------------------------
+combined |     208    14.90385    .1265995    1.825844    14.65426    15.15344
+---------+--------------------------------------------------------------------
+    diff |           -.4101996    .3417792               -1.093786    .2733872
+------------------------------------------------------------------------------
+    diff = mean(0) - mean(1)                                      t =  -1.2002
+Ho: diff = 0                     Satterthwaite's degrees of freedom =  60.3152
+
+    Ha: diff < 0                 Ha: diff != 0                 Ha: diff > 0
+ Pr(T < t) = 0.1174         Pr(|T| > |t|) = 0.2348          Pr(T > t) = 0.8826
+
+Two-sample t test with unequal variances
+------------------------------------------------------------------------------
+   Group |     Obs        Mean    Std. Err.   Std. Dev.   [95% Conf. Interval]
+---------+--------------------------------------------------------------------
+       0 |     164     .945122    .0178381    .2284396    .9098983    .9803456
+       1 |      44    .8863636    .0483983    .3210382    .7887591    .9839682
+---------+--------------------------------------------------------------------
+combined |     208    .9326923    .0174147    .2511586    .8983594    .9670253
+---------+--------------------------------------------------------------------
+    diff |            .0587583     .051581               -.0446036    .1621202
+------------------------------------------------------------------------------
+    diff = mean(0) - mean(1)                                      t =   1.1391
+Ho: diff = 0                     Satterthwaite's degrees of freedom =  55.2073
+
+    Ha: diff < 0                 Ha: diff != 0                 Ha: diff > 0
+ Pr(T < t) = 0.8702         Pr(|T| > |t|) = 0.2596          Pr(T > t) = 0.1298
+
+Two-sample t test with unequal variances
+------------------------------------------------------------------------------
+   Group |     Obs        Mean    Std. Err.   Std. Dev.   [95% Conf. Interval]
+---------+--------------------------------------------------------------------
+       0 |     155    13.79355    .1250712    1.557123    13.54647    14.04062
+       1 |      39    14.33333    .2853445    1.781976    13.75568    14.91098
+---------+--------------------------------------------------------------------
+combined |     194    13.90206    .1159216    1.614602    13.67343     14.1307
+---------+--------------------------------------------------------------------
+    diff |           -.5397849    .3115514               -1.164537    .0849674
+------------------------------------------------------------------------------
+    diff = mean(0) - mean(1)                                      t =  -1.7326
+Ho: diff = 0                     Satterthwaite's degrees of freedom =  53.5164
+
+    Ha: diff < 0                 Ha: diff != 0                 Ha: diff > 0
+ Pr(T < t) = 0.0445         Pr(|T| > |t|) = 0.0889          Pr(T > t) = 0.9555
+
+Two-sample t test with unequal variances
+------------------------------------------------------------------------------
+   Group |     Obs        Mean    Std. Err.   Std. Dev.   [95% Conf. Interval]
+---------+--------------------------------------------------------------------
+       0 |     164     6.68873    .1434703    1.837317     6.40543     6.97203
+       1 |      44    6.775501    .2449258    1.624654    6.281561    7.269441
+---------+--------------------------------------------------------------------
+combined |     208    6.707085    .1241848    1.791019    6.462256    6.951915
+---------+--------------------------------------------------------------------
+    diff |           -.0867708    .2838527               -.6522056    .4786639
+------------------------------------------------------------------------------
+    diff = mean(0) - mean(1)                                      t =  -0.3057
+Ho: diff = 0                     Satterthwaite's degrees of freedom =  75.2349
+
+    Ha: diff < 0                 Ha: diff != 0                 Ha: diff > 0
+ Pr(T < t) = 0.3803         Pr(|T| > |t|) = 0.7607          Pr(T > t) = 0.6197
+
+Two-sample t test with unequal variances
+------------------------------------------------------------------------------
+   Group |     Obs        Mean    Std. Err.   Std. Dev.   [95% Conf. Interval]
+---------+--------------------------------------------------------------------
+       0 |     164    .0125534    .0010929    .0139957    .0103954    .0147114
+       1 |      44    .0119426    .0020986    .0139208    .0077102    .0161749
+---------+--------------------------------------------------------------------
+combined |     208    .0124242    .0009672    .0139485    .0105174    .0143309
+---------+--------------------------------------------------------------------
+    diff |            .0006109    .0023662               -.0041105    .0053322
+------------------------------------------------------------------------------
+    diff = mean(0) - mean(1)                                      t =   0.2582
+Ho: diff = 0                     Satterthwaite's degrees of freedom =  68.1619
+
+    Ha: diff < 0                 Ha: diff != 0                 Ha: diff > 0
+ Pr(T < t) = 0.6015         Pr(|T| > |t|) = 0.7971          Pr(T > t) = 0.3985
+
+Two-sample t test with unequal variances
+------------------------------------------------------------------------------
+   Group |     Obs        Mean    Std. Err.   Std. Dev.   [95% Conf. Interval]
+---------+--------------------------------------------------------------------
+       0 |     164    .4544485    .0240083    .3074556    .4070412    .5018558
+       1 |      44     .444861    .0465032    .3084671    .3510784    .5386436
+---------+--------------------------------------------------------------------
+combined |     208    .4524204     .021283    .3069481    .4104611    .4943796
+---------+--------------------------------------------------------------------
+    diff |            .0095875    .0523349               -.0948533    .1140283
+------------------------------------------------------------------------------
+    diff = mean(0) - mean(1)                                      t =   0.1832
+Ho: diff = 0                     Satterthwaite's degrees of freedom =   67.708
+
+    Ha: diff < 0                 Ha: diff != 0                 Ha: diff > 0
+ Pr(T < t) = 0.5724         Pr(|T| > |t|) = 0.8552          Pr(T > t) = 0.4276
+
+Two-sample t test with unequal variances
+------------------------------------------------------------------------------
+   Group |     Obs        Mean    Std. Err.   Std. Dev.   [95% Conf. Interval]
+---------+--------------------------------------------------------------------
+       0 |     164    5.958203    .1009039      1.2922    5.758955     6.15745
+       1 |      44    5.974121    .2329945    1.545511    5.504243       6.444
+---------+--------------------------------------------------------------------
+combined |     208     5.96157    .0933119    1.345763    5.777607    6.145534
+---------+--------------------------------------------------------------------
+    diff |           -.0159186    .2539056               -.5237907    .4919535
+------------------------------------------------------------------------------
+    diff = mean(0) - mean(1)                                      t =  -0.0627
+Ho: diff = 0                     Satterthwaite's degrees of freedom =  60.0846
+
+    Ha: diff < 0                 Ha: diff != 0                 Ha: diff > 0
+ Pr(T < t) = 0.4751         Pr(|T| > |t|) = 0.9502          Pr(T > t) = 0.5249
+
+Two-sample t test with unequal variances
+------------------------------------------------------------------------------
+   Group |     Obs        Mean    Std. Err.   Std. Dev.   [95% Conf. Interval]
+---------+--------------------------------------------------------------------
+       0 |     164    7.937602    .0832899    1.066631    7.773136    8.102068
+       1 |      44     8.00828    .2035112    1.349941     7.59786    8.418699
+---------+--------------------------------------------------------------------
+combined |     208    7.952553    .0783012    1.129275    7.798183    8.106923
+---------+--------------------------------------------------------------------
+    diff |           -.0706777    .2198955               -.5108173    .3694619
+------------------------------------------------------------------------------
+    diff = mean(0) - mean(1)                                      t =  -0.3214
+Ho: diff = 0                     Satterthwaite's degrees of freedom =  58.1806
+
+    Ha: diff < 0                 Ha: diff != 0                 Ha: diff > 0
+ Pr(T < t) = 0.3745         Pr(|T| > |t|) = 0.7490          Pr(T > t) = 0.6255
+
+. multproc bl_1 logltdebt logstdebt me2 mk2bk_win MJuly SPRated SJuly ppe prof_
+> win tang_win sales_win size, by(treated)
+command multproc is unrecognized
+r(199);
+
+end of do-file
+r(199);

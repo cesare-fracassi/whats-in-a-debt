@@ -1,0 +1,22 @@
+%%% Table created in Stata by command iebaltab
+%%% (https://github.com/worldbank/ietoolkit)
+%%% (https://dimewiki.worldbank.org/iebaltab)
+%%% The command was specified exactly like this: 
+%%% iebaltab WW_w KZ_w SA_w if TMJunk == 1, grpvar(treated_matched) grplabels(2 "Treated" @ 1 "Matchd Untreated" @ 0 "Unmatched Untreated") rowvarlabels rowlabels(WW_w "Whited-Wu Index" KZ_w "Kaplan-Zingales Index" SA_w "Size-Age Index") savetex("C:/Users/cf8745/Box/Research/Rating Agency Paper - Final/ReplicationPackage/Output/Tables/fin_constraints_balance.tex") replace addnote("* p<0.10, ** p<0.05, *** p<0.01")
+
+\begin{tabular}{@{\extracolsep{5pt}}lcccccccccccc}
+\\[-1.8ex]\hline \hline \\[-1.8ex]
+ & \multicolumn{2}{c}{(1)}  & \multicolumn{2}{c}{(2)}  & \multicolumn{2}{c}{(3)}  & \multicolumn{2}{c}{(1)-(2)} & \multicolumn{2}{c}{(1)-(3)} & \multicolumn{2}{c}{(2)-(3)} \\
+ & \multicolumn{2}{c}{Unmatched Untreated}  & \multicolumn{2}{c}{Matchd Untreated}  & \multicolumn{2}{c}{Treated}  & \multicolumn{6}{c}{Pairwise t-test}  \\
+Variable & N & Mean/(SE) & N & Mean/(SE) & N & Mean/(SE) & N & Mean difference & N & Mean difference & N & Mean difference \\ \hline \\[-1.8ex] 
+Whited-Wu Index KZ\_w Kaplan-Zingales Index SA\_w Size-Age Index   & 315    & -0.310    & 108    & -0.317    & 43    & -0.326    & 423    & 0.006    & 358    & 0.016    & 151    & 0.009   \\
+ &   & (0.006)  &   & (0.008)  &   & (0.015)  &   &  &   &  &   &  \\ [1ex]
+Kaplan-Zingales Index (winsorized)   & 303    & 1.276    & 108    & 0.001    & 43    & 1.002    & 411    & 1.275**    & 346    & 0.274    & 151    & -1.001   \\
+ &   & (0.156)  &   & (0.825)  &   & (0.655)  &   &  &   &  &   &  \\ [1ex]
+Size-Age Index (winsorized)   & 317    & -3.369    & 108    & -3.390    & 44    & -3.369    & 425    & 0.021    & 361    & -0.000    & 152    & -0.021   \\
+ &   & (0.007)  &   & (0.007)  &   & (0.016)  &   &  &   &  &   &  \\ [1ex]
+\hline \hline \\[-1.8ex]
+%%% This is the note. If it does not have the correct margins, use texnotewidth() option or change the number before '\textwidth' in line below to fit it to table size.
+\multicolumn{10}{@{} p{\textwidth}}{If the table includes missing values (.n, .o, .v etc.) see the Missing values section in the help file for the Stata command iebaltab for definitions of these values. Significance: ***=.01, **=.05, *=.1. Full user input as written by user: [iebaltab WW\_w KZ\_w SA\_w if TMJunk == 1, grpvar(treated\_matched) grplabels(2 "Treated" @ 1 "Matchd Untreated" @ 0 "Unmatched Untreated") rowvarlabels rowlabels(WW\_w "Whited-Wu Index" KZ\_w "Kaplan-Zingales Index" SA\_w "Size-Age Index") savetex("C:/Users/cf8745/Box/Research/Rating Agency Paper - Final/ReplicationPackage/Output/Tables/fin\_constraints\_balance.tex") replace addnote("* p<0.10, ** p<0.05, *** p<0.01")] * p<0.10, ** p<0.05, *** p<0.01}
+
+\end{tabular}
